@@ -32,9 +32,9 @@ if [ -d ~/ros2_servo_venv ]; then
     rm -rf ~/ros2_servo_venv
 fi
 
-# Create new virtual environment
+# Create new virtual environment with system site packages (for ROS2 access)
 echo "Creating new virtual environment..."
-python3 -m venv ~/ros2_servo_venv
+python3 -m venv --system-site-packages ~/ros2_servo_venv
 source ~/ros2_servo_venv/bin/activate
 
 # Upgrade pip
