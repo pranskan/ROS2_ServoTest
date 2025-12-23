@@ -23,9 +23,9 @@ if [ -d ~/ros2_servo_venv ]; then
     echo "✓ Old venv removed"
 fi
 
-# Create new virtual environment
+# Create new virtual environment with system site packages
 echo "Creating new virtual environment..."
-python3 -m venv ~/ros2_servo_venv
+python3 -m venv --system-site-packages ~/ros2_servo_venv
 
 # Activate venv
 source ~/ros2_servo_venv/bin/activate
