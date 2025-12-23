@@ -65,7 +65,7 @@ class ServoNode(Node):
         """
         # Clamp angle between 0 and 180 degrees to prevent servo damage
         # max(0, ...) ensures minimum is 0
-        # min(180, ...) ensures maximum is 180
+        # min(180, ...) ensures maximum is 180 
         angle = max(0, min(180, msg.data))
         
         # Convert angle to PWM duty cycle value
