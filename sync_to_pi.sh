@@ -9,14 +9,14 @@ PI_IP="192.168.1.156"
 PI_USER="pranav"
 
 # Get the directory where this script is located
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+SCRIPT_DIR="/Users/pranav/PI5_Projects/ROS2_ServoTest"
 
 echo "========================================="
 echo "Syncing Project to Raspberry Pi"
 echo "========================================="
 echo ""
 echo "Source:      $SCRIPT_DIR"
-echo "Destination: $PI_USER@$PI_IP:~/pitest1/"
+echo "Destination: $PI_USER@$PI_IP:~/ROS2_ServoTest/"
 echo ""
 
 # Test connection
@@ -35,7 +35,7 @@ echo "Syncing files..."
 echo ""
 
 # First, ensure the directory exists on Pi
-ssh "$PI_USER@$PI_IP" "mkdir -p ~/"
+ssh "$PI_USER@$PI_IP" "mkdir -p ~/ROS2_ServoTest"
 
 # Sync files - note the trailing slashes are critical!
 rsync -avz --delete \
@@ -46,7 +46,7 @@ rsync -avz --delete \
     --exclude='.vscode' \
     --exclude='ros2_servo_venv' \
     "$SCRIPT_DIR/" \
-    "$PI_USER@$PI_IP:~/pitest1/"
+    "$PI_USER@$PI_IP:~/ROS2_ServoTest/"
 
 if [ $? -eq 0 ]; then
     echo ""
@@ -55,11 +55,11 @@ if [ $? -eq 0 ]; then
     echo "========================================="
     echo ""
     echo "Verifying files on Pi..."
-    ssh "$PI_USER@$PI_IP" "ls -la ~/pitest1/"
+    ssh "$PI_USER@$PI_IP" "ls -la ~/ROS2_ServoTest/"
     echo ""
     echo "To run on your Pi:"
     echo "  ssh $PI_USER@$PI_IP"
-    echo "  cd ~/pitest1"
+    echo "  cd ~/ROS2_ServoTest"
     echo "  source /opt/ros/jazzy/setup.bash"
     echo "  source ~/ros2_servo_venv/bin/activate"
     echo "  python3 servo_control.py"

@@ -1,0 +1,10 @@
+# Core servo control libraries
+adafruit-blinka
+adafruit-circuitpython-pca9685
+
+# Dependencies installed automatically by above packages:
+# - Adafruit-PlatformDetect
+# - pyftdi
+# - Adafruit-PureIO
+# - sysv-ipc
+# - RPi.GPIO (on Raspberry Pi)
