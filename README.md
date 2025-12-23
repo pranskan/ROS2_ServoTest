@@ -1,279 +1,169 @@
-# ROS2 Servo Control for Raspberry Pi 5
+# ROS2 Servo Control Test
 
-Control servos using ROS2 Jazzy on Raspberry Pi 5 with PCA9685 PWM driver.
+Simple ROS2 project to control a servo motor using PCA9685 PWM driver on Raspberry Pi 5.
 
 ## Hardware Requirements
 
-- Raspberry Pi 5 (Ubuntu Server 24.04 LTS)
-- PCA9685 16-Channel PWM/Servo Driver
-- Standard hobby servo (SG90 or similar)
-- External 5V power supply for servos
+- Raspberry Pi 5
+- PCA9685 PWM/Servo Driver Board
+- Servo motor (connected to channel 0)
+- Power supply for servos (5-6V)
 
 ## Wiring
 
-### I2C Connection (Pi ↔ PCA9685)
 ```
-Pi GPIO 3 (SDA)  →  PCA9685 SDA
-Pi GPIO 5 (SCL)  →  PCA9685 SCL
-Pi GND           →  PCA9685 GND
-Pi 3.3V          →  PCA9685 VCC
-```
+PCA9685 -> Raspberry Pi 5
+VCC     -> 3.3V (Pin 1)
+GND     -> GND (Pin 6)
+SDA     -> GPIO 2 (Pin 3)
+SCL     -> GPIO 3 (Pin 5)
 
-### Servo Connection (PCA9685 → Servo)
-```
-PCA9685 Channel 0 PWM  →  Servo Signal (Orange/Yellow)
-PCA9685 GND            →  Servo Ground (Brown/Black)
-External 5V+           →  Servo Power (Red)
-External 5V-           →  PCA9685 V+ GND
+Servo -> PCA9685
+Signal  -> Channel 0
+VCC     -> V+ (External 5-6V)
+GND     -> GND
 ```
 
-⚠️ **Important:** Connect servo power to external 5V supply, NOT the Pi!
+## Project Structure
 
-## Quick Start
+```
+ROS2_ServoTest/
+├── src/
+│   └── servo_control_pkg/
+│       ├── servo_control_pkg/
+│       │   ├── __init__.py
+│       │   └── servo_node.py        # ROS2 servo control node
+│       ├── package.xml
+│       ├── setup.py
+│       └── setup.cfg
+├── test_servo.py                     # Standalone servo test (no ROS2)
+├── requirements.txt                  # Python dependencies
+└── README.md
+```
 
-### First Time Setup (New Pi)
+## Setup Instructions
 
-1. **Clone this repository:**
+### 1. Install System Dependencies
+
 ```bash
-cd ~
-git clone <your-repo-url> ROS2_ServoTest
-cd ROS2_ServoTest
+# Enable I2C
+sudo raspi-config
+# Navigate to: Interface Options -> I2C -> Enable
+
+# Install ROS2 (if not already installed)
+# Follow: https://docs.ros.org/en/jazzy/Installation/Ubuntu.html
+
+# Install Python I2C libraries
+sudo apt update
+sudo apt install -y python3-pip python3-venv i2c-tools
 ```
 
-2. **Run initial setup (ONCE ONLY):**
+### 2. Install Adafruit Libraries
+
 ```bash
-chmod +x initial_pi_setup.sh
-./initial_pi_setup.sh
+pip install -r requirements.txt
 ```
 
-**What the script installs:**
-- ✅ ROS2 Jazzy (full desktop)
-- ✅ Python virtual environment **with system site packages** (for ROS2 access)
-- ✅ Adafruit libraries (PCA9685 control)
-- ✅ I2C, SPI, GPIO hardware support
-- ✅ System dependencies (i2c-tools, python3-dev)
-- ✅ User permissions (i2c, spi, gpio, dialout groups)
-- ✅ Auto-configures ROS2 in bashrc
-
-3. **Reboot if prompted:**
+Or install system-wide:
 ```bash
-sudo reboot
+sudo apt install python3-adafruit-blinka python3-adafruit-circuitpython-pca9685
 ```
 
-4. **Verify setup after reboot:**
-```bash
-# Check I2C (should show 40 if PCA9685 connected)
-sudo i2cdetect -y 1
+### 3. Build ROS2 Workspace
 
-# Check user groups (should include i2c, spi, gpio, dialout)
-groups $USER
+```bash
+cd /Users/pranav/PI5_Projects/ROS2_ServoTest
+colcon build
+source install/setup.bash
 ```
 
-### Running Servo Control (Daily Usage)
+## Usage
 
-**Terminal 1 - Start the servo node:**
+### Quick Hardware Test (No ROS2)
+
+Test the servo directly without ROS2:
+
 ```bash
+python3 test_servo.py
+```
+
+This will move the servo through several positions to verify hardware connection.
+
+### Run ROS2 Node
+
+```bash
+# Source ROS2 and workspace
 source /opt/ros/jazzy/setup.bash
-source ~/ros2_servo_venv/bin/activate
-cd ~/ROS2_ServoTest
-python3 servo_control.py
+source install/setup.bash
+
+# Run the servo control node
+ros2 run servo_control_pkg servo_node
 ```
 
-**Terminal 2 - Send commands:**
+### Control Servo via ROS2 Topics
+
+In another terminal:
+
 ```bash
+# Source ROS2
 source /opt/ros/jazzy/setup.bash
 
-# Move to 90° (middle)
-ros2 topic pub /servo_command std_msgs/msg/Float32 "data: 90.0"
+# Move to specific angle (0-180)
+ros2 topic pub --once /servo_angle std_msgs/msg/Int32 "{data: 90}"
 
-# Move to 0° (left)
-ros2 topic pub /servo_command std_msgs/msg/Float32 "data: 0.0"
-
-# Move to 180° (right)
-ros2 topic pub /servo_command std_msgs/msg/Float32 "data: 180.0"
-```
-
-## Files
-
-- **`initial_pi_setup.sh`** - Run ONCE on brand new Pi (installs everything)
-- **`recreate_venv.sh`** - ONLY if venv is broken (rarely needed)
-- **`servo_control.py`** - Main ROS2 servo control node
-- **`test_servo.py`** - Standalone servo test (no ROS2)
-
-## Script Usage Guide
-
-### `initial_pi_setup.sh` - First Time Only
-
-**When to run:** Brand new Raspberry Pi 5 setup
-
-**What it does:**
-1. Updates system packages
-2. Installs ROS2 Jazzy
-3. Configures ROS2 auto-load in terminal
-4. Creates virtual environment with `--system-site-packages` (allows ROS2 access)
-5. Installs Adafruit libraries
-6. Enables I2C/SPI/GPIO hardware
-7. Adds user to hardware groups
-8. Verifies everything works
-
-**Run once:** `./initial_pi_setup.sh`
-
----
-
-### `recreate_venv.sh` - Emergency Only
-
-**When to run:** ONLY if virtual environment is broken
-
-**What it does:**
-1. Deletes old `~/ros2_servo_venv`
-2. Creates new venv with `--system-site-packages`
-3. Reinstalls Adafruit libraries
-
-**Does NOT:**
-- Install ROS2 (already installed)
-- Enable hardware (already enabled)
-- Modify system configuration
-
-**Run only if needed:** `./recreate_venv.sh`
-
----
-
-### Normal Daily Usage - No Scripts!
-
-Just activate the existing venv:
-```bash
-source /opt/ros/jazzy/setup.bash
-source ~/ros2_servo_venv/bin/activate
-python3 servo_control.py
+# Check current angle
+ros2 topic echo /servo_angle
 ```
 
 ## Troubleshooting
 
-### Virtual Environment Issues
+### I2C Not Detected
 
-**❌ ERROR: "No module named 'yaml'" or "No module named 'rclpy'"**
-
-**Cause:** Virtual environment created without `--system-site-packages`
-
-**Solution:** Recreate venv with system access
 ```bash
-cd ~/ROS2_ServoTest
-chmod +x recreate_venv.sh
-./recreate_venv.sh
+# Check if I2C is enabled
+ls /dev/i2c*
+
+# Scan for devices (PCA9685 should show at 0x40)
+i2cdetect -y 1
 ```
 
----
+### Permission Denied
 
-**❌ ERROR: "No module named 'board'" or "No module named 'adafruit_pca9685'"**
-
-**Cause:** Virtual environment not activated
-
-**Solution:** Activate venv
 ```bash
-source ~/ros2_servo_venv/bin/activate
-```
-
----
-
-### Common Issues
-
-#### "Permission denied" on I2C
-**Solution:** Add user to i2c group and logout/login
-```bash
+# Add user to i2c group
 sudo usermod -a -G i2c $USER
-# Then logout and login
+# Log out and back in
 ```
 
-#### PCA9685 not detected
-**Solution:** Check wiring and scan I2C
-```bash
-sudo i2cdetect -y 1  # Should show 40
-```
-Verify connections:
-- Pi GPIO 3 (SDA) → PCA9685 SDA
-- Pi GPIO 5 (SCL) → PCA9685 SCL
-- Pi GND → PCA9685 GND
-- Pi 3.3V → PCA9685 VCC
+### Servo Not Moving
 
-#### ROS2 command not found
-**Solution:** Source ROS2 setup
-```bash
-source /opt/ros/jazzy/setup.bash
-```
+1. Check power supply to PCA9685 V+ pin (needs 5-6V for servos)
+2. Verify servo is connected to channel 0
+3. Run `test_servo.py` to isolate ROS2 from hardware issues
 
-### Check I2C Connection
+### Build Errors
 
 ```bash
-sudo i2cdetect -y 1
+# Clean and rebuild
+rm -rf build/ install/ log/
+colcon build
 ```
-Should show `40` if PCA9685 is connected.
 
-### Check ROS2 Topics
+## Development
+
+### Rebuild After Code Changes
 
 ```bash
-ros2 topic list
-ros2 topic echo /servo_command
+colcon build --packages-select servo_control_pkg
+source install/setup.bash
 ```
 
-### Permission Issues
+### View ROS2 Logs
 
-If you get permission errors:
 ```bash
-sudo usermod -a -G i2c,spi,gpio,dialout $USER
-```
-Then logout and login again.
-
-## Maintenance
-
-### Update Python Packages
-```bash
-source ~/ros2_servo_venv/bin/activate
-pip install --upgrade adafruit-blinka adafruit-circuitpython-pca9685
+ros2 run servo_control_pkg servo_node --ros-args --log-level debug
 ```
 
-### Update ROS2
-```bash
-sudo apt update
-sudo apt upgrade ros-jazzy-desktop
-```
+## License
 
-## Hardware Groups
-
-Your user should be in these groups:
-- `i2c` - I2C device access
-- `spi` - SPI device access
-- `gpio` - GPIO pin access
-- `dialout` - Serial port access
-
-Check with: `groups $USER`
-
-## Virtual Environment Details
-
-- **Location:** `~/ros2_servo_venv`
-- **Type:** Python venv with `--system-site-packages` flag
-- **Purpose:** Access both ROS2 system packages AND Adafruit libraries
-- **Activate:** `source ~/ros2_servo_venv/bin/activate`
-- **Deactivate:** `deactivate`
-
-**Key Feature:** The `--system-site-packages` flag allows the venv to access ROS2's Python packages (like `rclpy`, `yaml`) while also having its own Adafruit libraries.
-
-## System Configuration
-
-### I2C Pins
-- GPIO 3 (Pin 5) - SDA
-- GPIO 5 (Pin 3) - SCL
-
-### SPI Pins
-- GPIO 10 (Pin 19) - MOSI
-- GPIO 9 (Pin 21) - MISO
-- GPIO 11 (Pin 23) - SCLK
-
-### Config File
-I2C and SPI enabled in `/boot/firmware/config.txt`
-
-## Next Steps
-
-1. Modify `servo_control.py` to add more servos (PCA9685 has 16 channels)
-2. Create ROS2 launch files for multi-node systems
-3. Add sensor integration
-4. Build custom ROS2 messages for complex servo commands
+MIT
