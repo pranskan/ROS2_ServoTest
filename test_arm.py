@@ -50,6 +50,15 @@ def set_angle(channel, angle):
     current_positions[channel] = angle
     return angle
 
+def reset_all_servos():
+    """Reset all servos - disable all PWM outputs to stop current draw."""
+    print("\nResetting all servos (disabling PWM outputs)...")
+    for channel in range(NUM_SERVOS):
+        # Set duty cycle to 0 to completely disable PWM output
+        pca.channels[channel].duty_cycle = 0
+        current_positions[channel] = 0
+    print("✓ All PWM outputs disabled")
+
 def show_menu():
     """Display the control menu."""
     print()
@@ -68,6 +77,7 @@ def show_menu():
     print("  all <angle>      - Move all motors to angle (e.g., 'all 90')")
     print("  center           - Move all motors to 90°")
     print("  home             - Move all motors to home position (90°)")
+    print("  reset / stop     - Disable all PWM outputs (stop current draw)")
     print("  status           - Show current positions")
     print("  help             - Show this menu")
     print("  quit / exit      - Exit program")
@@ -98,6 +108,11 @@ def parse_command(cmd):
         for i in range(NUM_SERVOS):
             print(f"  Motor {i} ({servo_names[i]}): {current_positions[i]:.1f}°")
         print()
+        return True
+    
+    # Reset command - disable all PWM
+    if command in ['reset', 'stop', 'off']:
+        reset_all_servos()
         return True
     
     # Center/Home commands
@@ -187,9 +202,8 @@ try:
 except KeyboardInterrupt:
     print("\n\nExiting...")
 
-# Return all servos to center before exit
-print("\nReturning all servos to center position...")
-for i in range(NUM_SERVOS):
-    set_angle(i, 90)
+# Disable all PWM outputs before exit to stop current draw
+print("\nDisabling all PWM outputs...")
+reset_all_servos()
 print("✓ Done!")
 print("\nGoodbye!")

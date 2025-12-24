@@ -69,7 +69,7 @@ class RoboticArmNode(Node):
             self.arm_callback,
             10
         )
-        
+        #kjfksdfn
         # Initialize all servos to center position
         self.get_logger().info('Initializing robotic arm...')
         for channel in range(self.NUM_SERVOS):
@@ -99,6 +99,13 @@ class RoboticArmNode(Node):
         
         # Update current position
         self.current_angles[channel] = angle
+    
+    def disable_all_servos(self):
+        """Disable all PWM outputs to stop current draw."""
+        self.get_logger().info('Disabling all PWM outputs...')
+        for channel in range(self.NUM_SERVOS):
+            self.pca.channels[channel].duty_cycle = 0
+        self.get_logger().info('All PWM outputs disabled')
     
     def arm_callback(self, msg):
         """
@@ -134,6 +141,8 @@ def main(args=None):
     except KeyboardInterrupt:
         node.get_logger().info('Shutting down robotic arm...')
     finally:
+        # Disable all PWM outputs before shutdown
+        node.disable_all_servos()
         node.destroy_node()
         rclpy.shutdown()
 
