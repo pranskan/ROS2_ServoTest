@@ -69,7 +69,7 @@ class RoboticArmNode(Node):
             self.arm_callback,
             10
         )
-        #kjfksdfn
+        
         # Initialize all servos to center position
         self.get_logger().info('Initializing robotic arm...')
         for channel in range(self.NUM_SERVOS):
