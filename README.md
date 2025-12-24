@@ -1,13 +1,13 @@
-# ROS2 Servo Control Test
+# ROS2 Robotic Arm Control
 
-Simple ROS2 project to control a servo motor using PCA9685 PWM driver on Raspberry Pi 5.
+ROS2 project to control a 6-DOF robotic arm using PCA9685 PWM driver on Raspberry Pi 5.
 
 ## Hardware Requirements
 
 - Raspberry Pi 5
 - PCA9685 PWM/Servo Driver Board
-- Servo motor (connected to channel 0)
-- Power supply for servos (5-6V)
+- 6x Servo motors (MG996R or similar)
+- Power supply for servos (5-6V, 10A+ recommended for 6 servos)
 
 ## Wiring
 
@@ -18,26 +18,35 @@ GND     -> GND (Pin 6)
 SDA     -> GPIO 2 (Pin 3)
 SCL     -> GPIO 3 (Pin 5)
 
-Servo -> PCA9685
-Signal  -> Channel 0
-VCC     -> V+ (External 5-6V)
-GND     -> GND
+Servos -> PCA9685
+Servo 0 (Base)        -> Channel 0
+Servo 1 (Shoulder)    -> Channel 1
+Servo 2 (Elbow)       -> Channel 2
+Servo 3 (Wrist Pitch) -> Channel 3
+Servo 4 (Wrist Roll)  -> Channel 4
+Servo 5 (Gripper)     -> Channel 5
+
+All Servo Power:
+Red (Power)  -> PCA9685 V+ (External 5-6V, 10A)
+Black (GND)  -> PCA9685 GND
 ```
+
+**⚠️ Important:** 6 servos can draw 10-12A total. Use adequate power supply!
 
 ## Project Structure
 
 ```
-ROS2_ServoTest/
+ROS2_RoboticArm/
 ├── src/
-│   └── servo_control_pkg/
-│       ├── servo_control_pkg/
+│   └── arm_control_pkg/
+│       ├── arm_control_pkg/
 │       │   ├── __init__.py
-│       │   └── servo_node.py        # ROS2 servo control node
+│       │   └── arm_node.py        # ROS2 robotic arm control node
 │       ├── package.xml
 │       ├── setup.py
 │       └── setup.cfg
-├── test_servo.py                     # Standalone servo test (no ROS2)
-├── requirements.txt                  # Python dependencies
+├── test_arm.py                     # Standalone arm test (no ROS2)
+├── requirements.txt                # Python dependencies
 └── README.md
 ```
 
@@ -72,7 +81,7 @@ sudo apt install python3-adafruit-blinka python3-adafruit-circuitpython-pca9685
 ### 3. Build ROS2 Workspace
 
 ```bash
-cd /Users/pranav/PI5_Projects/ROS2_ServoTest
+cd /Users/pranav/PI5_Projects/ROS2_RoboticArm
 colcon build
 source install/setup.bash
 ```
@@ -81,39 +90,56 @@ source install/setup.bash
 
 ### Quick Hardware Test (No ROS2)
 
-Test the servo directly without ROS2:
+Test all 6 servos:
 
 ```bash
-python3 test_servo.py
+python3 test_arm.py
 ```
-
-This will move the servo through several positions to verify hardware connection.
 
 ### Run ROS2 Node
 
 ```bash
-# Source ROS2 and workspace
+# Terminal 1: Start the arm controller
 source /opt/ros/jazzy/setup.bash
-source install/setup.bash
-
-# Run the servo control node
-ros2 run servo_control_pkg servo_node
+source ~/ros2_servo_venv/bin/activate
+python3 servo_control.py
 ```
 
-### Control Servo via ROS2 Topics
-
-In another terminal:
+### Control Robotic Arm via ROS2
 
 ```bash
-# Source ROS2
+# Terminal 2: Send commands
 source /opt/ros/jazzy/setup.bash
 
-# Move to specific angle (0-180)
-ros2 topic pub --once /servo_angle std_msgs/msg/Int32 "{data: 90}"
+# Move all servos to center (90°)
+ros2 topic pub --once /arm_command std_msgs/msg/Float32MultiArray "data: [90.0, 90.0, 90.0, 90.0, 90.0, 90.0]"
 
-# Check current angle
-ros2 topic echo /servo_angle
+# Example positions:
+# [base, shoulder, elbow, wrist_pitch, wrist_roll, gripper]
+
+# Reach forward position
+ros2 topic pub --once /arm_command std_msgs/msg/Float32MultiArray "data: [90.0, 45.0, 45.0, 90.0, 90.0, 90.0]"
+
+# Reach up position
+ros2 topic pub --once /arm_command std_msgs/msg/Float32MultiArray "data: [90.0, 135.0, 135.0, 90.0, 90.0, 90.0]"
+
+# Close gripper
+ros2 topic pub --once /arm_command std_msgs/msg/Float32MultiArray "data: [90.0, 90.0, 90.0, 90.0, 90.0, 0.0]"
+
+# Open gripper
+ros2 topic pub --once /arm_command std_msgs/msg/Float32MultiArray "data: [90.0, 90.0, 90.0, 90.0, 90.0, 180.0]"
 ```
+
+## Servo Mapping
+
+| Channel | Joint | Function | Range |
+|---------|-------|----------|-------|
+| 0 | Base | Rotation | 0-180° |
+| 1 | Shoulder | Up/Down | 0-180° |
+| 2 | Elbow | Bend | 0-180° |
+| 3 | Wrist Pitch | Tilt | 0-180° |
+| 4 | Wrist Roll | Rotate | 0-180° |
+| 5 | Gripper | Open/Close | 0-180° |
 
 ## Troubleshooting
 
@@ -138,8 +164,8 @@ sudo usermod -a -G i2c $USER
 ### Servo Not Moving
 
 1. Check power supply to PCA9685 V+ pin (needs 5-6V for servos)
-2. Verify servo is connected to channel 0
-3. Run `test_servo.py` to isolate ROS2 from hardware issues
+2. Verify servos are connected to correct channels
+3. Run `test_arm.py` to isolate ROS2 from hardware issues
 
 ### Build Errors
 
@@ -154,14 +180,14 @@ colcon build
 ### Rebuild After Code Changes
 
 ```bash
-colcon build --packages-select servo_control_pkg
+colcon build --packages-select arm_control_pkg
 source install/setup.bash
 ```
 
 ### View ROS2 Logs
 
 ```bash
-ros2 run servo_control_pkg servo_node --ros-args --log-level debug
+ros2 run arm_control_pkg arm_node --ros-args --log-level debug
 ```
 
 ## License
