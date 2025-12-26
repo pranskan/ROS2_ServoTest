@@ -6,6 +6,7 @@ import time
 from adafruit_pca9685 import PCA9685
 from board import SCL, SDA
 import busio
+from kinematics import ArmKinematics
 
 print("=" * 60)
 print("INTERACTIVE 6-SERVO ROBOTIC ARM CONTROL")
@@ -24,6 +25,9 @@ except Exception as e:
     exit(1)
 
 print()
+
+# Initialize kinematics solver
+arm_kinematics = ArmKinematics()
 
 # Servo configuration
 SERVO_MIN = 0x0CCC  # ~0.5ms pulse
@@ -75,6 +79,7 @@ def show_menu():
     print("-" * 60)
     print("  <motor> <angle>  - Move motor to angle (e.g., '0 90')")
     print("  all <angle>      - Move all motors to angle (e.g., 'all 90')")
+    print("  xyz <x> <y> <z>  - Move to XYZ position in cm (e.g., 'xyz 20 0 30')")
     print("  center           - Move all motors to 90°")
     print("  home             - Move all motors to home position (90°)")
     print("  reset / stop     - Disable all PWM outputs (stop current draw)")
@@ -148,6 +153,36 @@ def parse_command(cmd):
         
         return True
     
+    # XYZ positioning command
+    if command == 'xyz':
+        if len(parts) < 4:
+            print("✗ Usage: xyz <x> <y> <z>")
+            print("  Example: xyz 20 0 30")
+            print("  Coordinates in cm")
+            return True
+        
+        try:
+            x = float(parts[1])
+            y = float(parts[2])
+            z = float(parts[3])
+            
+            print(f"\nCalculating angles for position ({x}, {y}, {z}) cm...")
+            angles = arm_kinematics.inverse_kinematics(x, y, z)
+            
+            if angles:
+                print(f"\n✓ Solution found! Moving to position...")
+                for i, angle in enumerate(angles):
+                    set_angle(i, angle)
+                    print(f"  Motor {i} ({servo_names[i]}): {angle:.1f}°")
+                print("✓ Done!")
+            else:
+                print("✗ Position unreachable with current arm configuration")
+            
+        except ValueError:
+            print("✗ Invalid coordinates. Must be numbers.")
+        
+        return True
+    
     # Individual motor command
     try:
         motor = int(parts[0])
@@ -182,6 +217,10 @@ for i in range(NUM_SERVOS):
     print(f"  Motor {i} ({servo_names[i]}): 90°")
 print()
 print("✓ Initialization complete!")
+print()
+print("Kinematics Configuration:")
+print(f"  Max reach: {arm_kinematics.L2 + arm_kinematics.L3 + arm_kinematics.L4:.2f} cm")
+print(f"  Link lengths: L1={arm_kinematics.L1}, L2={arm_kinematics.L2}, L3={arm_kinematics.L3}, L4={arm_kinematics.L4} cm")
 
 # Show initial menu
 show_menu()
