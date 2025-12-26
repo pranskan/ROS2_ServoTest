@@ -34,13 +34,21 @@ SERVO_MIN = 0x0CCC  # ~0.5ms pulse
 SERVO_MAX = 0x1999  # ~2.5ms pulse
 NUM_SERVOS = 6
 
+# ACTUAL WIRING - Channel to Joint mapping
+# Channel 0 -> Gripper
+# Channel 1 -> Wrist Roll
+# Channel 2 -> Wrist Pitch
+# Channel 3 -> Elbow
+# Channel 4 -> Shoulder
+# Channel 5 -> Base
+
 servo_names = [
-    "Base",
-    "Shoulder",
-    "Elbow",
-    "Wrist Pitch",
-    "Wrist Roll",
-    "Gripper"
+    "Gripper",       # Channel 0
+    "Wrist Roll",    # Channel 1
+    "Wrist Pitch",   # Channel 2
+    "Elbow",         # Channel 3
+    "Shoulder",      # Channel 4
+    "Base",          # Channel 5
 ]
 
 # Track current positions
@@ -167,13 +175,28 @@ def parse_command(cmd):
             z = float(parts[3])
             
             print(f"\nCalculating angles for position ({x}, {y}, {z}) cm...")
-            angles = arm_kinematics.inverse_kinematics(x, y, z)
+            # Get angles in logical order: [base, shoulder, elbow, wrist_pitch, wrist_roll, gripper]
+            logical_angles = arm_kinematics.inverse_kinematics(x, y, z)
             
-            if angles:
+            if logical_angles:
                 print(f"\n✓ Solution found! Moving to position...")
-                for i, angle in enumerate(angles):
-                    set_angle(i, angle)
-                    print(f"  Motor {i} ({servo_names[i]}): {angle:.1f}°")
+                
+                # Map logical angles to physical channels
+                # logical_angles = [base, shoulder, elbow, wrist_pitch, wrist_roll, gripper]
+                # channels       = [5,    4,        3,     2,           1,          0]
+                channel_mapping = {
+                    5: logical_angles[0],  # Base -> Channel 5
+                    4: logical_angles[1],  # Shoulder -> Channel 4
+                    3: logical_angles[2],  # Elbow -> Channel 3
+                    2: logical_angles[3],  # Wrist Pitch -> Channel 2
+                    1: logical_angles[4],  # Wrist Roll -> Channel 1
+                    0: logical_angles[5],  # Gripper -> Channel 0
+                }
+                
+                # Move servos to calculated positions
+                for channel, angle in channel_mapping.items():
+                    set_angle(channel, angle)
+                    print(f"  Channel {channel} ({servo_names[channel]}): {angle:.1f}°")
                 print("✓ Done!")
             else:
                 print("✗ Position unreachable with current arm configuration")

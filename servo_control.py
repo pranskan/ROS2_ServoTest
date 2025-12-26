@@ -22,13 +22,16 @@ class RoboticArmNode(Node):
     
     Subscribes to: /arm_command (Float32MultiArray) - Array of 6 angles (0-180°)
     
-    Servo mapping:
-    - Channel 0: Base rotation
-    - Channel 1: Shoulder
-    - Channel 2: Elbow
-    - Channel 3: Wrist pitch
-    - Channel 4: Wrist roll
-    - Channel 5: Gripper
+    ACTUAL WIRING - Channel to Joint mapping:
+    - Channel 0: Gripper
+    - Channel 1: Wrist Roll
+    - Channel 2: Wrist Pitch
+    - Channel 3: Elbow
+    - Channel 4: Shoulder
+    - Channel 5: Base rotation
+    
+    Message format (logical order):
+    /arm_command [base, shoulder, elbow, wrist_pitch, wrist_roll, gripper]
     """
     
     def __init__(self):
@@ -52,14 +55,24 @@ class RoboticArmNode(Node):
         # Current positions (for safety checking)
         self.current_angles = [90.0] * self.NUM_SERVOS  # Start at center
         
-        # Servo names for logging
+        # Servo names by channel (actual wiring)
         self.servo_names = [
-            "Base",
-            "Shoulder", 
-            "Elbow",
-            "Wrist Pitch",
-            "Wrist Roll",
-            "Gripper"
+            "Gripper",       # Channel 0
+            "Wrist Roll",    # Channel 1
+            "Wrist Pitch",   # Channel 2
+            "Elbow",         # Channel 3
+            "Shoulder",      # Channel 4
+            "Base",          # Channel 5
+        ]
+        
+        # Logical joint names (for messages)
+        self.logical_joint_names = [
+            "Base",          # Logical index 0 -> Channel 5
+            "Shoulder",      # Logical index 1 -> Channel 4
+            "Elbow",         # Logical index 2 -> Channel 3
+            "Wrist Pitch",   # Logical index 3 -> Channel 2
+            "Wrist Roll",    # Logical index 4 -> Channel 1
+            "Gripper",       # Logical index 5 -> Channel 0
         ]
         
         # Create subscriber for arm commands
@@ -113,7 +126,15 @@ class RoboticArmNode(Node):
         
         Args:
             msg (Float32MultiArray): Array of 6 angles (0-180°)
-                [base, shoulder, elbow, wrist_pitch, wrist_roll, gripper]
+                Logical order: [base, shoulder, elbow, wrist_pitch, wrist_roll, gripper]
+                
+        Channel Mapping:
+            msg.data[0] (base)        -> Channel 5
+            msg.data[1] (shoulder)    -> Channel 4
+            msg.data[2] (elbow)       -> Channel 3
+            msg.data[3] (wrist_pitch) -> Channel 2
+            msg.data[4] (wrist_roll)  -> Channel 1
+            msg.data[5] (gripper)     -> Channel 0
         """
         # Validate message has correct number of values
         if len(msg.data) != self.NUM_SERVOS:
@@ -122,11 +143,35 @@ class RoboticArmNode(Node):
             )
             return
         
+        # Map logical joint order to physical channels
+        channel_mapping = {
+            5: msg.data[0],  # Base -> Channel 5
+            4: msg.data[1],  # Shoulder -> Channel 4
+            3: msg.data[2],  # Elbow -> Channel 3
+            2: msg.data[3],  # Wrist Pitch -> Channel 2
+            1: msg.data[4],  # Wrist Roll -> Channel 1
+            0: msg.data[5],  # Gripper -> Channel 0
+        }
+        
         # Move each servo to target angle
         log_msg = "Moving: "
-        for channel, angle in enumerate(msg.data):
+        for logical_idx, angle in enumerate(msg.data):
+            # Find which channel this logical joint maps to
+            if logical_idx == 0:   # Base
+                channel = 5
+            elif logical_idx == 1: # Shoulder
+                channel = 4
+            elif logical_idx == 2: # Elbow
+                channel = 3
+            elif logical_idx == 3: # Wrist Pitch
+                channel = 2
+            elif logical_idx == 4: # Wrist Roll
+                channel = 1
+            elif logical_idx == 5: # Gripper
+                channel = 0
+            
             self.set_servo_angle(channel, angle)
-            log_msg += f"{self.servo_names[channel]}={angle:.1f}° "
+            log_msg += f"{self.logical_joint_names[logical_idx]}={angle:.1f}° "
         
         self.get_logger().info(log_msg)
 

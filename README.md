@@ -18,13 +18,13 @@ GND     -> GND (Pin 6)
 SDA     -> GPIO 2 (Pin 3)
 SCL     -> GPIO 3 (Pin 5)
 
-Servos -> PCA9685
-Servo 0 (Base)        -> Channel 0
-Servo 1 (Shoulder)    -> Channel 1
-Servo 2 (Elbow)       -> Channel 2
-Servo 3 (Wrist Pitch) -> Channel 3
-Servo 4 (Wrist Roll)  -> Channel 4
-Servo 5 (Gripper)     -> Channel 5
+Servos -> PCA9685 (YOUR ACTUAL WIRING)
+Servo (Gripper)     -> Channel 0
+Servo (Wrist Roll)  -> Channel 1
+Servo (Wrist Pitch) -> Channel 2
+Servo (Elbow)       -> Channel 3
+Servo (Shoulder)    -> Channel 4
+Servo (Base)        -> Channel 5
 
 All Servo Power:
 Red (Power)  -> PCA9685 V+ (External 5-6V, 10A)
@@ -134,12 +134,14 @@ ros2 topic pub --once /arm_command std_msgs/msg/Float32MultiArray "data: [90.0, 
 
 | Channel | Joint | Function | Range |
 |---------|-------|----------|-------|
-| 0 | Base | Rotation | 0-180° |
-| 1 | Shoulder | Up/Down | 0-180° |
-| 2 | Elbow | Bend | 0-180° |
-| 3 | Wrist Pitch | Tilt | 0-180° |
-| 4 | Wrist Roll | Rotate | 0-180° |
-| 5 | Gripper | Open/Close | 0-180° |
+| 5 | Base | Rotation | 0-180° |
+| 4 | Shoulder | Up/Down | 0-180° |
+| 3 | Elbow | Bend | 0-180° |
+| 2 | Wrist Pitch | Tilt | 0-180° |
+| 1 | Wrist Roll | Rotate | 0-180° |
+| 0 | Gripper | Open/Close | 0-180° |
+
+**Note:** ROS2 messages use logical order [base, shoulder, elbow, wrist_pitch, wrist_roll, gripper] which is automatically mapped to the correct channels.
 
 ## Troubleshooting
 
