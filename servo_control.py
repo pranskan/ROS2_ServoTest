@@ -13,10 +13,12 @@ Hardware:
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float32MultiArray, String
+from geometry_msgs.msg import Point  # Add this import
 from adafruit_pca9685 import PCA9685
 from board import SCL, SDA
 import busio
 import time
+from kinematics import ArmKinematics  # Add this import
 
 
 class RoboticArmNode(Node):
@@ -30,6 +32,9 @@ class RoboticArmNode(Node):
         
         self.NUM_SERVOS = 6
         self.servo_names = ["Gripper", "Wrist Roll", "Wrist Pitch", "Elbow", "Shoulder", "Base"]
+        
+        # Initialize kinematics solver
+        self.arm_kinematics = ArmKinematics()
         
         # Create subscriber for arm commands
         self.subscription = self.create_subscription(
@@ -47,6 +52,14 @@ class RoboticArmNode(Node):
             10
         )
         
+        # Create subscriber for XYZ commands
+        self.xyz_subscription = self.create_subscription(
+            Point,
+            'arm_xyz',
+            self.xyz_callback,
+            10
+        )
+        
         # Initialize all servos to center position
         self.get_logger().info('Initializing robotic arm...')
         for channel in range(self.NUM_SERVOS):
@@ -54,7 +67,7 @@ class RoboticArmNode(Node):
             time.sleep(0.2)  # Slower initialization to prevent jerky movements
         
         self.get_logger().info('Robotic Arm node started (ROS2 Jazzy)')
-        self.get_logger().info('Listening on: /arm_command, /arm_demo')
+        self.get_logger().info('Listening on: /arm_command, /arm_demo, /arm_xyz')
         self.get_logger().info(f'Controlling {self.NUM_SERVOS} servos on channels 0-{self.NUM_SERVOS-1}')
         self.get_logger().info('Servo types: Ch0-1=MG996R, Ch2-5=DS3218')
         self.get_logger().info('All servos initialized to 90° (center)')
@@ -193,6 +206,46 @@ class RoboticArmNode(Node):
         
         for channel, angle in enumerate(msg.data):
             self.set_servo_angle(channel, angle)
+    
+    def xyz_callback(self, msg):
+        """
+        Callback for XYZ position commands.
+        
+        Args:
+            msg (Point): Target position
+                msg.x: X coordinate (cm)
+                msg.y: Y coordinate (cm)
+                msg.z: Z coordinate (cm)
+        """
+        x, y, z = msg.x, msg.y, msg.z
+        
+        self.get_logger().info(f'Moving to position: X={x:.2f}, Y={y:.2f}, Z={z:.2f} cm')
+        
+        # Calculate joint angles using inverse kinematics
+        logical_angles = self.arm_kinematics.inverse_kinematics(x, y, z)
+        
+        if logical_angles is None:
+            self.get_logger().error(f'Position ({x}, {y}, {z}) is unreachable')
+            return
+        
+        # Map logical angles to physical channels
+        # logical_angles = [base, shoulder, elbow, wrist_pitch, wrist_roll, gripper]
+        # channels       = [5,    4,        3,     2,           1,          0]
+        channel_mapping = {
+            5: logical_angles[0],  # Base -> Channel 5
+            4: logical_angles[1],  # Shoulder -> Channel 4
+            3: logical_angles[2],  # Elbow -> Channel 3
+            2: logical_angles[3],  # Wrist Pitch -> Channel 2
+            1: logical_angles[4],  # Wrist Roll -> Channel 1
+            0: logical_angles[5],  # Gripper -> Channel 0
+        }
+        
+        # Move servos to calculated positions
+        self.get_logger().info('Solution found! Moving to position...')
+        for channel, angle in channel_mapping.items():
+            self.set_servo_angle(channel, angle)
+        
+        self.get_logger().info('Position reached!')
     
     def disable_all_servos(self):
         """Disable all servos by setting their duty cycle to 0."""
