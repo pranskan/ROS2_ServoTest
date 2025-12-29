@@ -26,8 +26,11 @@ except Exception as e:
 
 print()
 
-# Initialize kinematics solver
+# Initialize kinematics solver WITHOUT printing config
 arm_kinematics = ArmKinematics()
+
+# Suppress the config printout that happens during init
+# We'll move print_config to be called manually later
 
 # Servo configuration - MIXED SERVO TYPES
 # Channels 0-1: MG996R
@@ -270,9 +273,11 @@ def parse_command(cmd):
 print("Initializing all servos to 90° (center)...")
 for i in range(NUM_SERVOS):
     set_angle(i, 90)
-    print(f"  Motor {i} ({servo_names[i]}): 90°")
+    print(f"  ✓ Motor {i} ({servo_names[i]}): 90°")
+    time.sleep(0.2)  # Slower initialization to prevent jerky movements
 print()
 print("✓ Initialization complete!")
+
 print()
 print("Kinematics Configuration:")
 print(f"  Max reach: {arm_kinematics.L2 + arm_kinematics.L3 + arm_kinematics.L4:.2f} cm")

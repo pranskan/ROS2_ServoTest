@@ -54,22 +54,6 @@ class ArmKinematics:
         
         Args:
             link_lengths: List of [L1, L2, L3, L4] lengths in cm
-                L1: Base to shoulder height (vertical)
-                L2: Shoulder to elbow length (upper arm)
-                L3: Elbow to wrist length (forearm)
-                L4: Wrist to gripper tip length (end-effector)
-        
-        MEASUREMENT GUIDE:
-        - L1: Measure from ground to shoulder servo center
-        - L2: Measure from shoulder servo center to elbow servo center
-        - L3: Measure from elbow servo center to wrist servo center
-        - L4: Measure from wrist servo center to gripper tip
-        
-        DEFAULT VALUES (adjust for your robot):
-        - L1 = 10 cm  (typical base height)
-        - L2 = 15 cm  (typical upper arm)
-        - L3 = 15 cm  (typical forearm)
-        - L4 = 10 cm  (typical gripper)
         """
         if link_lengths is None:
             # Default link lengths - MEASURE YOUR ROBOT AND UPDATE THESE!
@@ -86,8 +70,8 @@ class ArmKinematics:
         self.max_height = self.L1 + self.L2 + self.L3 + self.L4
         self.min_height = self.L1 - (self.L2 + self.L3 + self.L4)
         
-        # Print configuration
-        self._print_config()
+        # DON'T print config during init - only when explicitly called
+        # self._print_config()  # REMOVED
     
     def _print_config(self):
         """Print arm configuration and limits."""
