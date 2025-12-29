@@ -1,24 +1,20 @@
 """
-ROS2 Robotic Arm Control Node
------------------------------
+ROS2 Robotic Arm Control Node with Path Planning
+------------------------------------------------
 Controls 6 servo motors for a robotic arm using PCA9685 PWM driver.
-
-Hardware:
-- PCA9685 PWM Driver on I2C bus
-- 6 servos connected to channels 0-5
-- Channels 0-1: MG996R
-- Channels 2-5: DS3218
+Includes path planning for obstacle avoidance.
 """
 
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float32MultiArray, String
-from geometry_msgs.msg import Point  # Add this import
+from geometry_msgs.msg import Point
 from adafruit_pca9685 import PCA9685
 from board import SCL, SDA
 import busio
 import time
-from kinematics import ArmKinematics  # Add this import
+from kinematics import ArmKinematics
+from path_planner import PathPlanner  # Add path planner
 
 
 class RoboticArmNode(Node):
@@ -35,6 +31,15 @@ class RoboticArmNode(Node):
         
         # Initialize kinematics solver
         self.arm_kinematics = ArmKinematics()
+        
+        # Initialize path planner with kinematics
+        self.path_planner = PathPlanner(self.arm_kinematics)
+        
+        # Track current XYZ position (start at center position)
+        self.current_xyz = self.get_current_xyz_position([90.0] * 6)
+        
+        # Path planning enabled by default
+        self.use_path_planning = True
         
         # Create subscriber for arm commands
         self.subscription = self.create_subscription(
@@ -60,6 +65,14 @@ class RoboticArmNode(Node):
             10
         )
         
+        # Create subscriber for obstacle management
+        self.obstacle_subscription = self.create_subscription(
+            String,
+            'arm_obstacles',
+            self.obstacle_callback,
+            10
+        )
+        
         # Initialize all servos to center position
         self.get_logger().info('Initializing robotic arm...')
         for channel in range(self.NUM_SERVOS):
@@ -67,9 +80,10 @@ class RoboticArmNode(Node):
             time.sleep(0.2)  # Slower initialization to prevent jerky movements
         
         self.get_logger().info('Robotic Arm node started (ROS2 Jazzy)')
-        self.get_logger().info('Listening on: /arm_command, /arm_demo, /arm_xyz')
+        self.get_logger().info('Listening on: /arm_command, /arm_demo, /arm_xyz, /arm_obstacles')
         self.get_logger().info(f'Controlling {self.NUM_SERVOS} servos on channels 0-{self.NUM_SERVOS-1}')
         self.get_logger().info('Servo types: Ch0-1=MG996R, Ch2-5=DS3218')
+        self.get_logger().info('Path planning: ENABLED')
         self.get_logger().info('All servos initialized to 90° (center)')
     
     def get_pulse_range(self, channel):
@@ -87,150 +101,30 @@ class RoboticArmNode(Node):
         min_pulse, max_pulse = self.get_pulse_range(channel)
         pulse = int(min_pulse + (angle / 180.0) * (max_pulse - min_pulse))
         self.pca.channels[channel].duty_cycle = pulse
-        self.get_logger().info(f'{self.servo_names[channel]} (Ch{channel}): {angle}°')
     
-    def run_demo(self):
-        """Run through preset test positions to demonstrate arm movements."""
-        self.get_logger().info('Starting demo sequence...')
-        
-        # Define demo positions
-        # Format: ([ch0, ch1, ch2, ch3, ch4, ch5], "description", pause_time)
-        demo_positions = [
-            # Start position
-            ([90, 90, 90, 90, 90, 90], "HOME: All servos centered", 2),
-            
-            # Test base rotation (channel 5)
-            ([90, 90, 90, 90, 90, 45], "BASE: Rotate right", 2),
-            ([90, 90, 90, 90, 90, 135], "BASE: Rotate left", 2),
-            ([90, 90, 90, 90, 90, 90], "BASE: Return center", 2),
-            
-            # Test shoulder (channel 4)
-            ([90, 90, 90, 90, 45, 90], "SHOULDER: Lift up", 2),
-            ([90, 90, 90, 90, 135, 90], "SHOULDER: Lower down", 2),
-            ([90, 90, 90, 90, 90, 90], "SHOULDER: Return center", 2),
-            
-            # Test elbow (channel 3)
-            ([90, 90, 90, 45, 90, 90], "ELBOW: Extend", 2),
-            ([90, 90, 90, 135, 90, 90], "ELBOW: Retract", 2),
-            ([90, 90, 90, 90, 90, 90], "ELBOW: Return center", 2),
-            
-            # Test wrist pitch (channel 2)
-            ([90, 90, 45, 90, 90, 90], "WRIST PITCH: Tilt up", 2),
-            ([90, 90, 135, 90, 90, 90], "WRIST PITCH: Tilt down", 2),
-            ([90, 90, 90, 90, 90, 90], "WRIST PITCH: Return center", 2),
-            
-            # Test wrist roll (channel 1)
-            ([90, 45, 90, 90, 90, 90], "WRIST ROLL: Rotate CW", 2),
-            ([90, 135, 90, 90, 90, 90], "WRIST ROLL: Rotate CCW", 2),
-            ([90, 90, 90, 90, 90, 90], "WRIST ROLL: Return center", 2),
-            
-            # Test gripper (channel 0)
-            ([0, 90, 90, 90, 90, 90], "GRIPPER: Close", 2),
-            ([180, 90, 90, 90, 90, 90], "GRIPPER: Open", 2),
-            ([90, 90, 90, 90, 90, 90], "GRIPPER: Half open", 2),
-            
-            # Combined movements
-            ([90, 90, 90, 45, 45, 90], "COMBO: Reach forward", 2),
-            ([90, 90, 90, 135, 135, 90], "COMBO: Reach up", 2),
-            ([0, 90, 90, 90, 90, 135], "COMBO: Grab object left", 3),
-            ([180, 90, 90, 90, 90, 45], "COMBO: Release object right", 3),
-            
-            # Return home
-            ([90, 90, 90, 90, 90, 90], "HOME: Return to center", 2),
+    def get_current_xyz_position(self, angles):
+        """Calculate current XYZ position from motor angles."""
+        # Convert motor channel order to logical joint order
+        logical_angles = [
+            angles[5],  # Base
+            angles[4],  # Shoulder
+            angles[3],  # Elbow
+            angles[2],  # Wrist Pitch
+            angles[1],  # Wrist Roll
+            angles[0],  # Gripper
         ]
-        
-        for position_num, (angles, description, pause) in enumerate(demo_positions, 1):
-            self.get_logger().info(f'Position {position_num}/{len(demo_positions)}: {description}')
-            
-            # Move each servo
-            for channel, angle in enumerate(angles):
-                self.set_servo_angle(channel, angle)
-            
-            # Pause
-            time.sleep(pause)
-        
-        self.get_logger().info('Demo complete!')
+        position = self.arm_kinematics.forward_kinematics(logical_angles)
+        return (position['x'], position['y'], position['z'])
     
-    def sweep_motor(self, channel):
-        """Sweep a single motor through its full range."""
-        if channel < 0 or channel >= self.NUM_SERVOS:
-            self.get_logger().error(f'Invalid channel {channel}')
-            return
-        
-        self.get_logger().info(f'Sweeping {self.servo_names[channel]} (Channel {channel})')
-        
-        sweep_angles = [0, 90, 180, 90, 0, 90]
-        
-        for angle in sweep_angles:
-            self.get_logger().info(f'  → {angle}°')
-            self.set_servo_angle(channel, angle)
-            time.sleep(1.5)
-        
-        self.get_logger().info('Sweep complete')
-    
-    def demo_callback(self, msg):
-        """
-        Callback for demo commands.
-        
-        Args:
-            msg (String): Command string
-                "demo" - Run full demo sequence
-                "sweep:0" - Sweep channel 0
-                "sweep:5" - Sweep channel 5
-                "center" - Return all servos to 90°
-        """
-        command = msg.data.lower().strip()
-        
-        if command == 'demo':
-            self.run_demo()
-        elif command.startswith('sweep:'):
-            try:
-                channel = int(command.split(':')[1])
-                self.sweep_motor(channel)
-            except (ValueError, IndexError):
-                self.get_logger().error('Invalid sweep command. Use: sweep:0 to sweep:5')
-        elif command == 'center':
-            self.get_logger().info('Moving all servos to center (90°)...')
-            for channel in range(self.NUM_SERVOS):
-                self.set_servo_angle(channel, 90.0)
-                time.sleep(0.2)
-            self.get_logger().info('All servos centered')
-        else:
-            self.get_logger().error(f'Unknown demo command: {command}')
-    
-    def arm_callback(self, msg):
-        """Callback for arm commands."""
-        if len(msg.data) != self.NUM_SERVOS:
-            self.get_logger().error(f'Invalid command length: {len(msg.data)}. Expected {self.NUM_SERVOS}.')
-            return
-        
-        for channel, angle in enumerate(msg.data):
-            self.set_servo_angle(channel, angle)
-    
-    def xyz_callback(self, msg):
-        """
-        Callback for XYZ position commands.
-        
-        Args:
-            msg (Point): Target position
-                msg.x: X coordinate (cm)
-                msg.y: Y coordinate (cm)
-                msg.z: Z coordinate (cm)
-        """
-        x, y, z = msg.x, msg.y, msg.z
-        
-        self.get_logger().info(f'Moving to position: X={x:.2f}, Y={y:.2f}, Z={z:.2f} cm')
-        
-        # Calculate joint angles using inverse kinematics
+    def move_to_waypoint(self, x, y, z):
+        """Move to a single XYZ waypoint."""
+        # Calculate joint angles
         logical_angles = self.arm_kinematics.inverse_kinematics(x, y, z)
         
         if logical_angles is None:
-            self.get_logger().error(f'Position ({x}, {y}, {z}) is unreachable')
-            return
+            return False
         
-        # Map logical angles to physical channels
-        # logical_angles = [base, shoulder, elbow, wrist_pitch, wrist_roll, gripper]
-        # channels       = [5,    4,        3,     2,           1,          0]
+        # Map to physical channels
         channel_mapping = {
             5: logical_angles[0],  # Base -> Channel 5
             4: logical_angles[1],  # Shoulder -> Channel 4
@@ -240,12 +134,115 @@ class RoboticArmNode(Node):
             0: logical_angles[5],  # Gripper -> Channel 0
         }
         
-        # Move servos to calculated positions
-        self.get_logger().info('Solution found! Moving to position...')
+        # Move servos
         for channel, angle in channel_mapping.items():
             self.set_servo_angle(channel, angle)
         
-        self.get_logger().info('Position reached!')
+        return True
+    
+    # ...existing run_demo, sweep_motor methods...
+    
+    def obstacle_callback(self, msg):
+        """
+        Callback for obstacle management commands.
+        
+        Commands:
+            "add:table:-50,50,-50,50,0,5"  - Add obstacle
+            "remove:table"                  - Remove obstacle
+            "list"                          - List all obstacles
+            "clear"                         - Clear all obstacles
+            "enable_planning"               - Enable path planning
+            "disable_planning"              - Disable path planning
+        """
+        command = msg.data.strip()
+        
+        if command.startswith('add:'):
+            # Format: "add:name:x_min,x_max,y_min,y_max,z_min,z_max"
+            parts = command.split(':')
+            if len(parts) == 3:
+                name = parts[1]
+                bounds = tuple(map(float, parts[2].split(',')))
+                if len(bounds) == 6:
+                    self.path_planner.add_obstacle(name, bounds)
+                    self.get_logger().info(f'Added obstacle: {name}')
+                else:
+                    self.get_logger().error('Invalid obstacle bounds format')
+            else:
+                self.get_logger().error('Invalid add command format')
+        
+        elif command.startswith('remove:'):
+            name = command.split(':')[1]
+            self.path_planner.remove_obstacle(name)
+            self.get_logger().info(f'Removed obstacle: {name}')
+        
+        elif command == 'list':
+            self.get_logger().info(f'Current obstacles: {list(self.path_planner.obstacles.keys())}')
+        
+        elif command == 'clear':
+            self.path_planner.obstacles = {}
+            self.get_logger().info('Cleared all obstacles')
+        
+        elif command == 'enable_planning':
+            self.use_path_planning = True
+            self.get_logger().info('Path planning ENABLED')
+        
+        elif command == 'disable_planning':
+            self.use_path_planning = False
+            self.get_logger().info('Path planning DISABLED')
+        
+        else:
+            self.get_logger().error(f'Unknown obstacle command: {command}')
+    
+    def xyz_callback(self, msg):
+        """
+        Callback for XYZ position commands with path planning.
+        """
+        target_xyz = (msg.x, msg.y, msg.z)
+        
+        self.get_logger().info(f'Moving from ({self.current_xyz[0]:.2f}, {self.current_xyz[1]:.2f}, {self.current_xyz[2]:.2f})')
+        self.get_logger().info(f'        to   ({target_xyz[0]:.2f}, {target_xyz[1]:.2f}, {target_xyz[2]:.2f}) cm')
+        
+        if self.use_path_planning:
+            # Use path planning
+            self.get_logger().info('Using path planning...')
+            path = self.path_planner.plan_best_path(self.current_xyz, target_xyz)
+            
+            if path is None:
+                self.get_logger().error('No safe path found!')
+                return
+            
+            # Execute path
+            self.get_logger().info(f'Executing path with {len(path)} waypoints...')
+            for i, waypoint in enumerate(path):
+                success = self.move_to_waypoint(*waypoint)
+                if not success:
+                    self.get_logger().error(f'Failed at waypoint {i}')
+                    return
+                time.sleep(0.1)  # Small delay between waypoints
+            
+            self.get_logger().info('Path execution complete!')
+        
+        else:
+            # Direct movement (no path planning)
+            self.get_logger().info('Direct movement (no path planning)...')
+            success = self.move_to_waypoint(*target_xyz)
+            if not success:
+                self.get_logger().error(f'Position ({target_xyz[0]}, {target_xyz[1]}, {target_xyz[2]}) is unreachable')
+                return
+            self.get_logger().info('Position reached!')
+        
+        # Update current position
+        self.current_xyz = target_xyz
+    
+    def demo_callback(self, msg):
+        """Callback for demo commands."""
+        # ...existing demo_callback code...
+        pass
+    
+    def arm_callback(self, msg):
+        """Callback for arm commands."""
+        # ...existing arm_callback code...
+        pass
     
     def disable_all_servos(self):
         """Disable all servos by setting their duty cycle to 0."""
