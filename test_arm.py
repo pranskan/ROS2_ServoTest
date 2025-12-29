@@ -7,7 +7,7 @@ from adafruit_pca9685 import PCA9685
 from board import SCL, SDA
 import busio
 from kinematics import ArmKinematics
-
+#
 print("=" * 60)
 print("INTERACTIVE 6-SERVO ROBOTIC ARM CONTROL")
 print("=" * 60)
@@ -29,35 +29,57 @@ print()
 # Initialize kinematics solver
 arm_kinematics = ArmKinematics()
 
-# Servo configuration
-SERVO_MIN = 0x0CCC  # ~0.5ms pulse
-SERVO_MAX = 0x1999  # ~2.5ms pulse
+# Servo configuration - MIXED SERVO TYPES
+# Channels 0-1: MG996R
+# Channels 2-5: DS3218
+SERVO_MIN_MG996R = 0x0CCC  # ~0.5ms pulse (MG996R)
+SERVO_MAX_MG996R = 0x1999  # ~2.5ms pulse (MG996R)
+
+SERVO_MIN_DS3218 = 500     # ~0.5ms pulse (DS3218) - calibrate with calibrate_servo.py
+SERVO_MAX_DS3218 = 2500    # ~2.5ms pulse (DS3218) - calibrate with calibrate_servo.py
+
 NUM_SERVOS = 6
 
-# ACTUAL WIRING - Channel to Joint mapping
-# Channel 0 -> Gripper
-# Channel 1 -> Wrist Roll
-# Channel 2 -> Wrist Pitch
-# Channel 3 -> Elbow
-# Channel 4 -> Shoulder
-# Channel 5 -> Base
+# Define which channels use which servo type
+SERVO_TYPES = {
+    0: 'MG996R',  # Gripper
+    1: 'MG996R',  # Wrist Roll
+    2: 'DS3218',  # Wrist Pitch
+    3: 'DS3218',  # Elbow
+    4: 'DS3218',  # Shoulder
+    5: 'DS3218',  # Base
+}
 
 servo_names = [
-    "Gripper",       # Channel 0
-    "Wrist Roll",    # Channel 1
-    "Wrist Pitch",   # Channel 2
-    "Elbow",         # Channel 3
-    "Shoulder",      # Channel 4
-    "Base",          # Channel 5
+    "Gripper (MG996R)",       # Channel 0
+    "Wrist Roll (MG996R)",    # Channel 1
+    "Wrist Pitch (DS3218)",   # Channel 2
+    "Elbow (DS3218)",         # Channel 3
+    "Shoulder (DS3218)",      # Channel 4
+    "Base (DS3218)",          # Channel 5
 ]
 
 # Track current positions
 current_positions = [90] * NUM_SERVOS
 
+def get_pulse_range(channel):
+    """Get the appropriate pulse range for the servo type on this channel."""
+    if SERVO_TYPES[channel] == 'DS3218':
+        return SERVO_MIN_DS3218, SERVO_MAX_DS3218
+    else:  # MG996R
+        return SERVO_MIN_MG996R, SERVO_MAX_MG996R
+
 def set_angle(channel, angle):
-    """Set servo angle."""
+    """Set servo angle with appropriate pulse range for servo type."""
     angle = max(0, min(180, angle))
-    pulse = int(SERVO_MIN + (angle / 180.0) * (SERVO_MAX - SERVO_MIN))
+    
+    # Get the correct pulse range for this servo type
+    servo_min, servo_max = get_pulse_range(channel)
+    
+    # Calculate pulse
+    pulse = int(servo_min + (angle / 180.0) * (servo_max - servo_min))
+    
+    # Send PWM signal
     pca.channels[channel].duty_cycle = pulse
     current_positions[channel] = angle
     return angle
@@ -65,10 +87,21 @@ def set_angle(channel, angle):
 def reset_all_servos():
     """Reset all servos - disable all PWM outputs to stop current draw."""
     print("\nResetting all servos (disabling PWM outputs)...")
+    
     for channel in range(NUM_SERVOS):
-        # Set duty cycle to 0 to completely disable PWM output
-        pca.channels[channel].duty_cycle = 0
-        current_positions[channel] = 0
+        try:
+            # For DS3218 servos, send them to neutral position first
+            if SERVO_TYPES[channel] == 'DS3218':
+                set_angle(channel, 90)
+                time.sleep(0.3)
+            
+            # Then disable PWM
+            pca.channels[channel].duty_cycle = 0
+            current_positions[channel] = 0
+            
+        except Exception as e:
+            print(f"  ✗ Channel {channel} error: {e}")
+    
     print("✓ All PWM outputs disabled")
 
 def show_menu():
