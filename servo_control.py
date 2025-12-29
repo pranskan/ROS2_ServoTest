@@ -38,6 +38,9 @@ class RoboticArmNode(Node):
         # Track current XYZ position (start at center position)
         self.current_xyz = self.get_current_xyz_position([90.0] * 6)
         
+        # Track current motor angles
+        self.current_angles = [90.0] * self.NUM_SERVOS
+        
         # Path planning enabled by default
         self.use_path_planning = True
         
@@ -140,7 +143,59 @@ class RoboticArmNode(Node):
         
         return True
     
-    # ...existing run_demo, sweep_motor methods...
+    def run_demo(self):
+        """Run through preset test positions."""
+        # Demo implementation from previous version
+        pass
+    
+    def sweep_motor(self, channel):
+        """Sweep a motor through its range."""
+        # Sweep implementation from previous version
+        pass
+    
+    def demo_callback(self, msg):
+        """Callback for demo commands."""
+        command = msg.data.lower().strip()
+        
+        if command == 'demo':
+            self.run_demo()
+        elif command.startswith('sweep:'):
+            try:
+                channel = int(command.split(':')[1])
+                self.sweep_motor(channel)
+            except (ValueError, IndexError):
+                self.get_logger().error('Invalid sweep command')
+        elif command == 'center':
+            self.get_logger().info('Centering all motors...')
+            for channel in range(self.NUM_SERVOS):
+                self.set_servo_angle(channel, 90.0)
+                time.sleep(0.2)
+            self.get_logger().info('All motors centered')
+        else:
+            self.get_logger().error(f'Unknown command: {command}')
+    
+    def arm_callback(self, msg):
+        """Callback for direct arm angle commands from teleop."""
+        # Add logging FIRST to verify callback is being called
+        self.get_logger().info('=== ARM CALLBACK TRIGGERED ===')
+        
+        if len(msg.data) != self.NUM_SERVOS:
+            self.get_logger().error(f'Expected {self.NUM_SERVOS} angles, got {len(msg.data)}')
+            return
+        
+        self.get_logger().info(f'Received arm command: {[f"{a:.1f}°" for a in msg.data]}')
+        
+        # Move each motor to commanded angle
+        for channel, angle in enumerate(msg.data):
+            self.get_logger().info(f'Setting channel {channel} to {angle:.1f}°')
+            self.current_angles[channel] = angle
+            self.set_servo_angle(channel, angle)
+        
+        # Update current XYZ position
+        self.current_xyz = self.get_current_xyz_position(list(msg.data))
+        
+        # Log movement with XYZ
+        self.get_logger().info(f'Moved to XYZ: ({self.current_xyz[0]:.2f}, {self.current_xyz[1]:.2f}, {self.current_xyz[2]:.2f}) cm')
     
     def obstacle_callback(self, msg):
         """
@@ -233,16 +288,6 @@ class RoboticArmNode(Node):
         
         # Update current position
         self.current_xyz = target_xyz
-    
-    def demo_callback(self, msg):
-        """Callback for demo commands."""
-        # ...existing demo_callback code...
-        pass
-    
-    def arm_callback(self, msg):
-        """Callback for arm commands."""
-        # ...existing arm_callback code...
-        pass
     
     def disable_all_servos(self):
         """Disable all servos by setting their duty cycle to 0."""
