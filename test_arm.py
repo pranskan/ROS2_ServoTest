@@ -117,7 +117,7 @@ def show_menu():
     print("Motors (Current Positions):")
     print("-" * 60)
     for i in range(NUM_SERVOS):
-        print(f"  {i}: {servo_names[i]:15s} - {current_positions[i]:5.1f}°")
+         print(f"  {i}: {servo_names[i]:15s} - {current_positions[i]:5.1f}°")
     print()
     print("Commands:")
     print("-" * 60)
