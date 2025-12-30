@@ -44,7 +44,15 @@ class RoboticArmNode(Node):
         # Path planning enabled by default
         self.use_path_planning = True
         
-        # Create subscriber for arm commands
+        # Smooth movement parameters
+        self.movement_speed = 2.0  # degrees per step (smaller = smoother)
+        self.step_delay = 0.02     # seconds between steps (50Hz update)
+        
+        # Initialization flag - ignore commands during startup
+        self.initialized = False
+        
+        # Create subscribers BEFORE initialization
+        # But callbacks will check self.initialized flag
         self.subscription = self.create_subscription(
             Float32MultiArray,
             'arm_command',
@@ -52,7 +60,6 @@ class RoboticArmNode(Node):
             10
         )
         
-        # Create subscriber for demo/test commands
         self.demo_subscription = self.create_subscription(
             String,
             'arm_demo',
@@ -60,7 +67,6 @@ class RoboticArmNode(Node):
             10
         )
         
-        # Create subscriber for XYZ commands
         self.xyz_subscription = self.create_subscription(
             Point,
             'arm_xyz',
@@ -68,7 +74,6 @@ class RoboticArmNode(Node):
             10
         )
         
-        # Create subscriber for obstacle management
         self.obstacle_subscription = self.create_subscription(
             String,
             'arm_obstacles',
@@ -76,18 +81,44 @@ class RoboticArmNode(Node):
             10
         )
         
-        # Initialize all servos to center position
-        self.get_logger().info('Initializing robotic arm...')
-        for channel in range(self.NUM_SERVOS):
-            self.set_servo_angle(channel, 90.0)
-            time.sleep(0.2)  # Slower initialization to prevent jerky movements
+        # Wait a moment for topics to settle
+        self.get_logger().info('Waiting for topics to settle...')
+        time.sleep(0.5)
         
-        self.get_logger().info('Robotic Arm node started (ROS2 Jazzy)')
+        # Initialize all servos to center position SLOWLY
+        self.get_logger().info('Initializing robotic arm to center position...')
+        self.get_logger().info('Please wait - moving servos slowly to prevent jerky motion')
+        
+        # Move to center very slowly
+        for channel in range(self.NUM_SERVOS):
+            self.get_logger().info(f'  Initializing servo {channel} ({self.servo_names[channel]})...')
+            # Start from current angle (assume 90) and move slowly
+            current = 90.0
+            target = 90.0
+            
+            # Move in 1-degree increments
+            steps = 20  # Take 20 steps to reach target
+            for step in range(steps + 1):
+                angle = current + (target - current) * (step / steps)
+                self.set_servo_angle(channel, angle)
+                time.sleep(0.05)  # 50ms between steps
+            
+            self.current_angles[channel] = target
+        
+        # Now we're ready to accept commands
+        self.initialized = True
+        
+        self.get_logger().info('=' * 60)
+        self.get_logger().info('Robotic Arm node READY!')
+        self.get_logger().info('=' * 60)
         self.get_logger().info('Listening on: /arm_command, /arm_demo, /arm_xyz, /arm_obstacles')
         self.get_logger().info(f'Controlling {self.NUM_SERVOS} servos on channels 0-{self.NUM_SERVOS-1}')
         self.get_logger().info('Servo types: Ch0-1=MG996R, Ch2-5=DS3218')
         self.get_logger().info('Path planning: ENABLED')
+        self.get_logger().info(f'Movement speed: {self.movement_speed}°/step, {self.step_delay*1000:.0f}ms delay')
         self.get_logger().info('All servos initialized to 90° (center)')
+        self.get_logger().info('Ready to accept commands!')
+        self.get_logger().info('=' * 60)
     
     def get_pulse_range(self, channel):
         """Get the pulse range for a given servo channel."""
@@ -119,8 +150,46 @@ class RoboticArmNode(Node):
         position = self.arm_kinematics.forward_kinematics(logical_angles)
         return (position['x'], position['y'], position['z'])
     
+    def smooth_move_to_angles(self, target_angles):
+        """
+        Smoothly move servos from current angles to target angles.
+        
+        Args:
+            target_angles (list): Target angles for all 6 servos
+        """
+        # Calculate maximum angle difference
+        max_diff = 0
+        for i in range(self.NUM_SERVOS):
+            diff = abs(target_angles[i] - self.current_angles[i])
+            if diff > max_diff:
+                max_diff = diff
+        
+        if max_diff == 0:
+            return  # Already at target
+        
+        # Calculate number of steps needed
+        num_steps = int(max_diff / self.movement_speed)
+        if num_steps == 0:
+            num_steps = 1
+        
+        # Interpolate and move
+        for step in range(num_steps + 1):
+            t = step / num_steps  # 0 to 1
+            
+            for channel in range(self.NUM_SERVOS):
+                # Linear interpolation
+                angle = self.current_angles[channel] + t * (target_angles[channel] - self.current_angles[channel])
+                self.set_servo_angle(channel, angle)
+            
+            # Small delay between steps for smooth motion
+            if step < num_steps:
+                time.sleep(self.step_delay)
+        
+        # Update current angles
+        self.current_angles = list(target_angles)
+    
     def move_to_waypoint(self, x, y, z):
-        """Move to a single XYZ waypoint."""
+        """Move to a single XYZ waypoint with smooth motion."""
         # Calculate joint angles
         logical_angles = self.arm_kinematics.inverse_kinematics(x, y, z)
         
@@ -128,18 +197,17 @@ class RoboticArmNode(Node):
             return False
         
         # Map to physical channels
-        channel_mapping = {
-            5: logical_angles[0],  # Base -> Channel 5
-            4: logical_angles[1],  # Shoulder -> Channel 4
-            3: logical_angles[2],  # Elbow -> Channel 3
-            2: logical_angles[3],  # Wrist Pitch -> Channel 2
-            1: logical_angles[4],  # Wrist Roll -> Channel 1
-            0: logical_angles[5],  # Gripper -> Channel 0
-        }
+        target_angles = [
+            logical_angles[5],  # Gripper -> Channel 0
+            logical_angles[4],  # Wrist Roll -> Channel 1
+            logical_angles[3],  # Wrist Pitch -> Channel 2
+            logical_angles[2],  # Elbow -> Channel 3
+            logical_angles[1],  # Shoulder -> Channel 4
+            logical_angles[0],  # Base -> Channel 5
+        ]
         
-        # Move servos
-        for channel, angle in channel_mapping.items():
-            self.set_servo_angle(channel, angle)
+        # Smoothly move to target angles
+        self.smooth_move_to_angles(target_angles)
         
         return True
     
@@ -155,6 +223,11 @@ class RoboticArmNode(Node):
     
     def demo_callback(self, msg):
         """Callback for demo commands."""
+        # Ignore commands during initialization
+        if not self.initialized:
+            self.get_logger().warn('Ignoring demo command - node still initializing')
+            return
+        
         command = msg.data.lower().strip()
         
         if command == 'demo':
@@ -176,7 +249,11 @@ class RoboticArmNode(Node):
     
     def arm_callback(self, msg):
         """Callback for direct arm angle commands from teleop."""
-        # Add logging FIRST to verify callback is being called
+        # Ignore commands during initialization
+        if not self.initialized:
+            self.get_logger().warn('Ignoring command - node still initializing')
+            return
+        
         self.get_logger().info('=== ARM CALLBACK TRIGGERED ===')
         
         if len(msg.data) != self.NUM_SERVOS:
@@ -185,11 +262,8 @@ class RoboticArmNode(Node):
         
         self.get_logger().info(f'Received arm command: {[f"{a:.1f}°" for a in msg.data]}')
         
-        # Move each motor to commanded angle
-        for channel, angle in enumerate(msg.data):
-            self.get_logger().info(f'Setting channel {channel} to {angle:.1f}°')
-            self.current_angles[channel] = angle
-            self.set_servo_angle(channel, angle)
+        # Smoothly move to commanded angles
+        self.smooth_move_to_angles(list(msg.data))
         
         # Update current XYZ position
         self.current_xyz = self.get_current_xyz_position(list(msg.data))
@@ -209,6 +283,11 @@ class RoboticArmNode(Node):
             "enable_planning"               - Enable path planning
             "disable_planning"              - Disable path planning
         """
+        # Ignore commands during initialization
+        if not self.initialized:
+            self.get_logger().warn('Ignoring obstacle command - node still initializing')
+            return
+        
         command = msg.data.strip()
         
         if command.startswith('add:'):
@@ -252,6 +331,11 @@ class RoboticArmNode(Node):
         """
         Callback for XYZ position commands with path planning.
         """
+        # Ignore commands during initialization
+        if not self.initialized:
+            self.get_logger().warn('Ignoring XYZ command - node still initializing')
+            return
+        
         target_xyz = (msg.x, msg.y, msg.z)
         
         self.get_logger().info(f'Moving from ({self.current_xyz[0]:.2f}, {self.current_xyz[1]:.2f}, {self.current_xyz[2]:.2f})')
@@ -266,19 +350,19 @@ class RoboticArmNode(Node):
                 self.get_logger().error('No safe path found!')
                 return
             
-            # Execute path
+            # Execute path with smooth motion
             self.get_logger().info(f'Executing path with {len(path)} waypoints...')
             for i, waypoint in enumerate(path):
                 success = self.move_to_waypoint(*waypoint)
                 if not success:
                     self.get_logger().error(f'Failed at waypoint {i}')
                     return
-                time.sleep(0.1)  # Small delay between waypoints
+                # No additional delay needed - smooth_move_to_angles handles it
             
             self.get_logger().info('Path execution complete!')
         
         else:
-            # Direct movement (no path planning)
+            # Direct movement (no path planning) with smooth motion
             self.get_logger().info('Direct movement (no path planning)...')
             success = self.move_to_waypoint(*target_xyz)
             if not success:

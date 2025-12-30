@@ -40,6 +40,7 @@ Black (GND)  -> PCA9685 GND
 ```
 ROS2_ServoTest/
 ├── servo_control.py          # Main ROS2 control node
+├── start_arm.sh              # Helper script for clean startup
 ├── test_arm.py               # Interactive testing tool (no ROS2)
 ├── kinematics.py             # Inverse kinematics calculations
 ├── calibrate_servo.py        # Servo calibration tool
@@ -75,6 +76,12 @@ See initial_pi_setup.sh for detailed commands.
 The servo control node can receive commands from multiple sources at the same time through ROS2 topics:
 
 **Terminal 1 - Start servo control node (required):**
+```bash
+cd ~/ROS2_ServoTest
+./start_arm.sh
+```
+
+**Or manually:**
 ```bash
 cd ~/ROS2_ServoTest
 source /opt/ros/jazzy/setup.bash
@@ -164,13 +171,21 @@ python3 teleop_keyboard.py
 
 ### ROS2 Node
 
-**Terminal 1 - Start node:**
+**Terminal 1 - Start node (recommended method):**
+```bash
+cd ~/ROS2_ServoTest
+./start_arm.sh
+```
+
+**Or manually:**
 ```bash
 cd ~/ROS2_ServoTest
 source /opt/ros/jazzy/setup.bash
 source ~/ros2_servo_venv/bin/activate
 python3 servo_control.py
 ```
+
+**Note:** The node takes about 2-3 seconds to initialize. Wait for the "Ready to accept commands!" message before sending commands.
 
 **Terminal 2 - Send commands:**
 ```bash
@@ -207,21 +222,6 @@ ros2 topic pub --once /arm_obstacles std_msgs/msg/String "data: 'disable_plannin
 | `/arm_xyz` | Point | XYZ positioning (uses inverse kinematics) | **path_executor.py**, ros2 CLI, custom scripts |
 | `/arm_obstacles` | String | Path planning: 'enable_planning', 'disable_planning', 'add:name:bounds' | ros2 CLI |
 
-**Note:** All publishers can run simultaneously. The `servo_control.py` node processes commands as they arrive.
-
-## Motor Channel Mapping
-
-| Channel | Joint | Type | Function |
-|---------|-------|------|----------|
-| 0 | Gripper | MG996R | Open/Close (0°=closed, 180°=open) |
-| 1 | Wrist Roll | MG996R | Rotate wrist |
-| 2 | Wrist Pitch | DS3218 | Tilt wrist up/down |
-| 3 | Elbow | DS3218 | Bend elbow |
-| 4 | Shoulder | DS3218 | Lift arm up/down |
-| 5 | Base | DS3218 | Rotate base left/right |
-
-## Calibration
-
 If servos don't reach full 0-180° range or make buzzing sounds:
 
 ```bash
@@ -256,6 +256,7 @@ The `PathPlanner` class creates smooth, collision-free paths between two positio
 ### Features
 
 - **Smooth Path Planning**: Interpolates joint angles to ensure smooth motion
+- **Smooth Servo Motion**: Gradual angle changes prevent jerky movements (2°/step @ 50Hz)
 - **Linear Path Planning**: Creates straight-line paths in Cartesian space
 - **Configurable Step Size**: Control maximum joint angle changes per waypoint
 - **Automatic Waypoint Generation**: Calculates optimal number of waypoints
@@ -282,24 +283,23 @@ python3 path_executor.py
 # Custom start and end positions
 python3 path_executor.py --start 0 -31 29 --end -32 12 26
 
-# Smoother motion (smaller steps, slower)
-python3 path_executor.py --start 0 -31 29 --end -32 12 26 --max-change 3 --delay 0.3
+# Very smooth motion (more waypoints, very small steps)
+python3 path_executor.py --start 0 -31 29 --end -32 12 26 --max-change 2 --delay 0.05
 
-# Faster motion (larger steps, quicker)
-python3 path_executor.py --start 0 -31 29 --end -32 12 26 --max-change 10 --delay 0.1
+# Faster motion (fewer waypoints, larger steps)
+python3 path_executor.py --start 0 -31 29 --end -32 12 26 --max-change 10 --delay 0.05
 ```
 
 **Path executor arguments:**
 - `--start X Y Z`: Starting position in cm (default: 0.0 -31.07 29.15)
 - `--end X Y Z`: Target position in cm (default: -31.76 11.56 26.34)
 - `--max-change DEGREES`: Max joint angle change per waypoint (default: 5.0°)
-- `--delay SECONDS`: Delay between waypoints (default: 0.2s)
+- `--delay SECONDS`: Delay between waypoints (default: 0.05s)
 
-**How it works:**
-1. `path_executor.py` calculates waypoints using path planner
-2. Publishes each waypoint to `/arm_xyz` topic
-3. `servo_control.py` receives waypoints and moves servos
-4. Waits between waypoints for smooth execution
+**Smooth motion is automatic:**
+- Servos move gradually at 2°/step with 20ms between steps (50Hz)
+- No jerky movements even with large angle changes
+- You can adjust smoothness by changing `--max-change` (smaller = more waypoints = smoother path)
 
 ### Command-Line Testing (No ROS2)
 
@@ -440,11 +440,28 @@ for waypoint in waypoints:
 
 ### Tips
 
-- **Smoother Motion**: Use smaller `max_joint_change` values (3-5°)
-- **Faster Motion**: Use larger `max_joint_change` values (10-15°)
+- **Smoother Motion**: Use smaller `max_joint_change` values (2-3°) for more waypoints
+- **Faster Motion**: Use larger `max_joint_change` values (10-15°) for fewer waypoints
+- **Very Smooth**: Try `--max-change 2` for ultra-smooth motion
+- **Balanced**: Default `--max-change 5` provides good balance
 - **Obstacle Avoidance**: Check each waypoint before execution
 - **Path Validation**: Always check if path is `None` before executing
 - **Test First**: Use command-line testing to verify paths before using in code
+
+### Adjusting Smoothness
+
+If movements are still too jerky or too slow, edit `servo_control.py`:
+
+```python
+# In __init__ method:
+self.movement_speed = 2.0   # degrees per step (decrease for smoother, slower)
+self.step_delay = 0.02      # seconds between steps (decrease for faster)
+```
+
+Examples:
+- **Very smooth, slow**: `movement_speed = 1.0`, `step_delay = 0.02`
+- **Balanced (default)**: `movement_speed = 2.0`, `step_delay = 0.02`
+- **Fast, less smooth**: `movement_speed = 5.0`, `step_delay = 0.01`
 
 ## Troubleshooting
 

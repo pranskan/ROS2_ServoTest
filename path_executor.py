@@ -28,7 +28,7 @@ class PathExecutorNode(Node):
         self.get_logger().info('Path Executor Node started')
         self.get_logger().info('Publishing to: /arm_xyz')
         
-    def execute_path(self, start_xyz, end_xyz, max_joint_change=5.0, delay=0.2):
+    def execute_path(self, start_xyz, end_xyz, max_joint_change=5.0, delay=0.05):
         """
         Plan and execute a path.
         
@@ -36,7 +36,7 @@ class PathExecutorNode(Node):
             start_xyz (tuple): Starting position (x, y, z)
             end_xyz (tuple): Target position (x, y, z)
             max_joint_change (float): Max degrees per waypoint
-            delay (float): Delay between waypoints in seconds
+            delay (float): Delay between waypoints in seconds (default: 0.05)
         """
         self.get_logger().info('=' * 60)
         self.get_logger().info(f'Planning path from {start_xyz} to {end_xyz}')
@@ -61,7 +61,7 @@ class PathExecutorNode(Node):
             self.get_logger().info(f'  Waypoint {i+1}/{len(waypoints)}: ({x:.2f}, {y:.2f}, {z:.2f})')
             self.xyz_pub.publish(msg)
             
-            # Wait for movement
+            # Reduced delay since servo_control now handles smooth motion
             time.sleep(delay)
         
         self.get_logger().info('✓ Path execution complete!')
@@ -85,8 +85,8 @@ def main():
                        help='End position (x y z)')
     parser.add_argument('--max-change', type=float, default=5.0,
                        help='Max joint angle change per waypoint (degrees)')
-    parser.add_argument('--delay', type=float, default=0.2,
-                       help='Delay between waypoints (seconds)')
+    parser.add_argument('--delay', type=float, default=0.05,
+                       help='Delay between waypoints (seconds, default: 0.05)')
     
     args = parser.parse_args()
     
