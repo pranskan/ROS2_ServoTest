@@ -222,6 +222,21 @@ ros2 topic pub --once /arm_obstacles std_msgs/msg/String "data: 'disable_plannin
 | `/arm_xyz` | Point | XYZ positioning (uses inverse kinematics) | **path_executor.py**, ros2 CLI, custom scripts |
 | `/arm_obstacles` | String | Path planning: 'enable_planning', 'disable_planning', 'add:name:bounds' | ros2 CLI |
 
+**Note:** All publishers can run simultaneously. The `servo_control.py` node processes commands as they arrive.
+
+## Motor Channel Mapping
+
+| Channel | Joint | Type | Function |
+|---------|-------|------|----------|
+| 0 | Gripper | MG996R | Open/Close (0°=closed, 180°=open) |
+| 1 | Wrist Roll | MG996R | Rotate wrist |
+| 2 | Wrist Pitch | DS3218 | Tilt wrist up/down |
+| 3 | Elbow | DS3218 | Bend elbow |
+| 4 | Shoulder | DS3218 | Lift arm up/down |
+| 5 | Base | DS3218 | Rotate base left/right |
+
+## Calibration
+
 If servos don't reach full 0-180° range or make buzzing sounds:
 
 ```bash
@@ -266,9 +281,7 @@ The `PathPlanner` class creates smooth, collision-free paths between two positio
 **Terminal 1 - Start servo control (required):**
 ```bash
 cd ~/ROS2_ServoTest
-source /opt/ros/jazzy/setup.bash
-source ~/ros2_servo_venv/bin/activate
-python3 servo_control.py
+./start_arm.sh
 ```
 
 **Terminal 2 - Execute a planned path:**
@@ -495,15 +508,56 @@ sudo usermod -a -G i2c $USER
 
 ### Jerky Movement on Startup
 
-This is normal - servos initialize one at a time with 0.2s delays to prevent simultaneous power draw.
+**Cause:** Old/stale messages in ROS2 topics from previous sessions.
+
+**Solutions:**
+1. **Use the startup script** (recommended):
+   ```bash
+   ./start_arm.sh
+   ```
+   This cleans up old processes and topics.
+
+2. **Wait for initialization**: The node displays "Ready to accept commands!" when it's safe to send commands.
+
+3. **Kill old nodes** before starting:
+   ```bash
+   pkill -f servo_control.py
+   sleep 1
+   python3 servo_control.py
+   ```
+
+4. **Adjust initialization speed**: If still jerky, edit `servo_control.py`:
+   ```python
+   # In __init__, change:
+   time.sleep(0.05)  # to 0.1 for slower, smoother init
+   ```
+
+### Servos Spasming/Twitching
+
+**Causes:**
+- Commands sent too quickly during initialization
+- Stale messages in topics
+- Power supply issues
+
+**Solutions:**
+1. Always wait for "Ready to accept commands!" message
+2. Check power supply can provide 10A+ continuous
+3. Use `start_arm.sh` script for clean startup
+4. If using `path_executor.py`, add longer delay:
+   ```bash
+   # Wait 3 seconds after starting servo_control
+   sleep 3
+   python3 path_executor.py
+   ```
 
 ## Files Description
 
 | File | Purpose |
 |------|---------|
 | `servo_control.py` | Main ROS2 node (requires ROS2) |
+| `start_arm.sh` | **Helper script for clean startup** |
 | `teleop_keyboard.py` | Keyboard teleoperation with XYZ display |
-| `path_executor.py` | **Execute planned paths via ROS2** |
+| `path_executor.py` | Execute planned paths via ROS2 |
 | `path_planner.py` | Path planning algorithm (testing only) |
 | `test_arm.py` | Interactive testing (no ROS2 needed) |
 | `kinematics.py` | Inverse kinematics math |
@@ -516,14 +570,14 @@ This is normal - servos initialize one at a time with 0.2s delays to prevent sim
 # 1. Initial setup (once)
 ./initial_pi_setup.sh
 
-# 2. Test hardware
+# 2. Test hardware (no ROS2)
 python3 test_arm.py
-# Type: center, status, quit
 
-# 3. Use with ROS2
-python3 servo_control.py
-# (In another terminal)
-ros2 topic pub --once /arm_demo std_msgs/msg/String "data: 'demo'"
+# 3. Start ROS2 control (recommended)
+./start_arm.sh
+
+# 4. In another terminal - use teleoperation
+python3 teleop_keyboard.py
 ```
 
 ## License
