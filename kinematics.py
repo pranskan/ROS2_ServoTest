@@ -245,8 +245,8 @@ class ArmKinematics:
         """
         Calculate end-effector position from joint angles.
         
-        CALIBRATED for your robot's servo mounting angles.
-        Measured offset: Shoulder servo 90° = 50° mechanical angle
+        CALIBRATED CORRECTLY for your robot.
+        Measured: All at 90° → horizontal 25cm, height 40cm
         
         Args:
             angles: [base, shoulder, elbow, wrist_pitch, wrist_roll, gripper]
@@ -256,15 +256,22 @@ class ArmKinematics:
         """
         theta0, theta1, theta2, theta3, _, _ = [math.radians(a) for a in angles]
         
-        # Adjust for servo center positions
-        theta0 -= math.radians(90)
-        theta2 = math.radians(180) - theta2
-        theta3 -= math.radians(90)
+        # Calculate from YOUR actual measurements
+        # Measured: horizontal 25cm, height 40cm when all at 90°
+        # Height above base: 40 - 10.5 = 29.5cm
+        # Angle from horizontal: atan2(29.5, 25) = 49.7°
         
-        # CALIBRATED OFFSET (measured on your robot)
-        # When shoulder servo = 90°, actual mechanical angle = 50°
-        SHOULDER_OFFSET = math.radians(50.0)
-        theta1 = (theta1 - math.radians(90)) + SHOULDER_OFFSET
+        # Adjust for servo center positions AND measured offset
+        theta0 -= math.radians(90)
+        
+        # Shoulder offset: Your servo 90° = 49.7° mechanical
+        theta1 = theta1 - math.radians(90) + math.radians(49.7)
+        
+        # Elbow: inverted
+        theta2 = math.radians(180) - theta2
+        
+        # Wrist pitch
+        theta3 -= math.radians(90)
         
         # Calculate cumulative angles
         a1 = theta1
