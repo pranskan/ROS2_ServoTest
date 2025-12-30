@@ -4,6 +4,7 @@ Path Planning for Robotic Arm
 Plans smooth paths between two XYZ positions.
 """
 import math
+import argparse
 from kinematics import ArmKinematics
 
 
@@ -163,7 +164,54 @@ class PathPlanner:
 
 
 def test_path_planner():
-    """Test the path planner with your specific case."""
+    """Test the path planner with command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description='Test path planner with custom start and end positions',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Default test case
+  python3 path_planner.py
+  
+  # Custom positions
+  python3 path_planner.py --start 0 -31.07 29.15 --end -31.76 11.56 26.34
+  
+  # Different max joint change
+  python3 path_planner.py --start 10 20 30 --end -10 -20 25 --max-change 10
+  
+  # More waypoints (smaller steps)
+  python3 path_planner.py --start 0 0 30 --end 20 20 30 --max-change 3
+        """
+    )
+    
+    parser.add_argument(
+        '--start', 
+        nargs=3, 
+        type=float,
+        metavar=('X', 'Y', 'Z'),
+        default=[-0.00, -31.07, 29.15],
+        help='Start position (x y z) in cm (default: -0.00 -31.07 29.15)'
+    )
+    
+    parser.add_argument(
+        '--end', 
+        nargs=3, 
+        type=float,
+        metavar=('X', 'Y', 'Z'),
+        default=[-31.76, 11.56, 26.34],
+        help='End position (x y z) in cm (default: -31.76 11.56 26.34)'
+    )
+    
+    parser.add_argument(
+        '--max-change',
+        type=float,
+        default=5.0,
+        metavar='DEGREES',
+        help='Maximum joint angle change per waypoint in degrees (default: 5.0)'
+    )
+    
+    args = parser.parse_args()
+    
     print("=" * 60)
     print("PATH PLANNER TEST")
     print("=" * 60)
@@ -172,14 +220,15 @@ def test_path_planner():
     kinematics = ArmKinematics()
     planner = PathPlanner(kinematics)
     
-    # Your specific test case
-    start_pos = (-0.00, -31.07, 29.15)
-    end_pos = (-31.76, 11.56, 26.34)
+    # Use command-line arguments
+    start_pos = tuple(args.start)
+    end_pos = tuple(args.end)
+    max_change = args.max_change
     
     print("\n" + "=" * 60)
-    print("Test: Move with 5° max joint changes")
+    print(f"Test: Move with {max_change}° max joint changes")
     
-    path = planner.plan_best_path(start_pos, end_pos, max_joint_change=5.0)
+    path = planner.plan_best_path(start_pos, end_pos, max_joint_change=max_change)
     
     if path:
         print(f"\n✓ Path with {len(path)} waypoints:")
