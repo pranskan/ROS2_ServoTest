@@ -157,7 +157,7 @@ class ArmKinematics:
             x (float): Target X coordinate (cm)
             y (float): Target Y coordinate (cm)
             z (float): Target Z coordinate (cm)
-            pitch (float): Desired gripper pitch angle (degrees)
+            pitch (float): Desired gripper pitch angle (degrees, default 0 = horizontal)
             roll (float): Desired gripper roll angle (degrees)
             gripper (float): Gripper opening (0-180 degrees)
         
@@ -172,23 +172,27 @@ class ArmKinematics:
         # Distance from base to target in XY plane
         r = math.sqrt(x**2 + y**2)
         
-        # Account for wrist length at desired pitch
-        pitch_rad = math.radians(pitch)
-        wx = self.L4 * math.cos(pitch_rad)
-        wz = self.L4 * math.sin(pitch_rad)
+        # SIMPLIFIED: For horizontal gripper (pitch=0), the wrist is at the target
+        # We'll solve for wrist position = target position
+        # This matches what teleop does (all joints affect position directly)
+        target_r = r
+        target_z = z - self.L1  # Subtract base height
         
-        # Target position for wrist (end of arm, before gripper)
-        target_r = r - wx
-        target_z = z - self.L1 - wz
+        # Distance from shoulder to target (accounting for wrist and gripper)
+        # When all joints are horizontal, we need: shoulder->elbow->wrist->gripper
+        # But the target IS the gripper tip, so we work backwards
+        wrist_r = target_r - self.L4  # Gripper extends horizontally
+        wrist_z = target_z
         
-        # Distance from shoulder to wrist target
-        d = math.sqrt(target_r**2 + target_z**2)
+        # Distance from shoulder to wrist
+        d = math.sqrt(wrist_r**2 + wrist_z**2)
         
-        # Check if target is reachable
+        # Check if wrist position is reachable by shoulder+elbow
         if d > (self.L2 + self.L3) or d < abs(self.L2 - self.L3):
             print(f"⚠️  Position unreachable: distance {d:.2f} cm")
             print(f"   Max reach: {self.L2 + self.L3:.2f} cm")
             print(f"   Min reach: {abs(self.L2 - self.L3):.2f} cm")
+            print(f"   (This is shoulder->elbow->wrist distance, not including gripper)")
             return None
         
         # Joint 2 (Elbow): Use law of cosines
@@ -197,11 +201,12 @@ class ArmKinematics:
         theta2 = math.degrees(math.acos(cos_theta2))
         
         # Joint 1 (Shoulder): Calculate shoulder angle
-        alpha = math.atan2(target_z, target_r)
+        alpha = math.atan2(wrist_z, wrist_r)
         beta = math.acos((self.L2**2 + d**2 - self.L3**2) / (2 * self.L2 * d))
         theta1 = math.degrees(alpha + beta)
         
-        # Joint 3 (Wrist Pitch): Calculate to achieve desired end-effector pitch
+        # Joint 3 (Wrist Pitch): Keep gripper horizontal
+        # The wrist needs to compensate for shoulder and elbow angles
         theta3 = pitch - (theta1 + theta2 - 180)
         
         # Joint 4 (Wrist Roll): Direct pass-through
@@ -328,6 +333,6 @@ def test_kinematics():
     print("3. Run this test again to verify workspace")
     print("=" * 60 + "\n")
 
-#1
+#12dfddd
 if __name__ == "__main__":
     test_kinematics()
