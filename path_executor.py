@@ -1,112 +1,85 @@
 """
-ROS2 Path Executor Node
------------------------
-Executes planned paths by publishing waypoints to servo_control node.
+Path Executor - Plans and executes smooth paths
 """
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Point
 import time
+import math
 from kinematics import ArmKinematics
-from path_planner import PathPlanner
 
 
 class PathExecutorNode(Node):
     def __init__(self):
         super().__init__('path_executor_node')
         
-        # Initialize kinematics and planner
         self.kinematics = ArmKinematics()
-        self.planner = PathPlanner(self.kinematics)
-        
-        # Publisher for XYZ commands
         self.xyz_pub = self.create_publisher(Point, 'arm_xyz', 10)
         
-        # Track current position
-        self.current_xyz = (0.0, -31.07, 29.15)  # Default start position
-        
-        self.get_logger().info('Path Executor Node started')
-        self.get_logger().info('Publishing to: /arm_xyz')
-        
-    def execute_path(self, start_xyz, end_xyz, max_joint_change=5.0, delay=0.05):
-        """
-        Plan and execute a path.
-        
-        Args:
-            start_xyz (tuple): Starting position (x, y, z)
-            end_xyz (tuple): Target position (x, y, z)
-            max_joint_change (float): Max degrees per waypoint
-            delay (float): Delay between waypoints in seconds (default: 0.05)
-        """
-        self.get_logger().info('=' * 60)
+        self.get_logger().info('Path Executor ready')
+    
+    def plan_and_execute(self, start_xyz, end_xyz, max_joint_change=5.0):
+        """Plan smooth path and execute it."""
         self.get_logger().info(f'Planning path from {start_xyz} to {end_xyz}')
         
-        # Plan the path
-        waypoints = self.planner.plan_best_path(start_xyz, end_xyz, max_joint_change)
+        # Get joint angles for start and end
+        start_angles = self.kinematics.inverse_kinematics(*start_xyz)
+        end_angles = self.kinematics.inverse_kinematics(*end_xyz)
         
-        if waypoints is None:
-            self.get_logger().error('Failed to plan path!')
+        if not start_angles or not end_angles:
+            self.get_logger().error('Position unreachable')
             return False
         
-        self.get_logger().info(f'Path created with {len(waypoints)} waypoints')
-        self.get_logger().info('Executing path...')
+        # Calculate number of waypoints needed
+        max_angle_diff = max(abs(end_angles[i] - start_angles[i]) for i in range(6))
+        num_steps = max(1, int(math.ceil(max_angle_diff / max_joint_change)))
         
-        # Execute each waypoint
-        for i, (x, y, z) in enumerate(waypoints):
-            msg = Point()
-            msg.x = x
-            msg.y = y
-            msg.z = z
+        self.get_logger().info(f'Executing {num_steps + 1} waypoints...')
+        
+        # Generate and execute waypoints
+        for i in range(num_steps + 1):
+            t = i / num_steps
             
-            self.get_logger().info(f'  Waypoint {i+1}/{len(waypoints)}: ({x:.2f}, {y:.2f}, {z:.2f})')
+            # Interpolate joint angles
+            interpolated = [start_angles[j] + t * (end_angles[j] - start_angles[j]) 
+                          for j in range(6)]
+            
+            # Calculate XYZ for these angles
+            pos = self.kinematics.forward_kinematics(interpolated)
+            
+            # Publish waypoint
+            msg = Point()
+            msg.x, msg.y, msg.z = pos['x'], pos['y'], pos['z']
             self.xyz_pub.publish(msg)
             
-            # Reduced delay since servo_control now handles smooth motion
-            time.sleep(delay)
+            time.sleep(0.05)
         
-        self.get_logger().info('✓ Path execution complete!')
-        self.get_logger().info('=' * 60)
-        
-        # Update current position
-        self.current_xyz = end_xyz
+        self.get_logger().info('✓ Path complete')
         return True
 
 
 def main():
     import argparse
     
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Execute a planned path')
-    parser.add_argument('--start', nargs=3, type=float, 
-                       default=[0.0, -31.07, 29.15],
-                       help='Start position (x y z)')
-    parser.add_argument('--end', nargs=3, type=float,
-                       default=[-31.76, 11.56, 26.34],
-                       help='End position (x y z)')
-    parser.add_argument('--max-change', type=float, default=5.0,
-                       help='Max joint angle change per waypoint (degrees)')
-    parser.add_argument('--delay', type=float, default=0.05,
-                       help='Delay between waypoints (seconds, default: 0.05)')
+    parser = argparse.ArgumentParser(description='Execute planned path')
+    parser.add_argument('--start', nargs=3, type=float, default=[0.0, -31.0, 29.0])
+    parser.add_argument('--end', nargs=3, type=float, default=[-31.0, 11.0, 26.0])
+    parser.add_argument('--max-change', type=float, default=5.0)
     
     args = parser.parse_args()
     
     rclpy.init()
     node = PathExecutorNode()
     
-    # Give servo_control time to start
+    time.sleep(1.0)  # Wait for servo_control to be ready
+    
+    node.plan_and_execute(
+        tuple(args.start),
+        tuple(args.end),
+        args.max_change
+    )
+    
     time.sleep(1.0)
-    
-    # Execute the path
-    start_pos = tuple(args.start)
-    end_pos = tuple(args.end)
-    
-    node.execute_path(start_pos, end_pos, 
-                     max_joint_change=args.max_change,
-                     delay=args.delay)
-    
-    # Keep node alive briefly
-    time.sleep(2.0)
-    
     node.destroy_node()
     rclpy.shutdown()
 
