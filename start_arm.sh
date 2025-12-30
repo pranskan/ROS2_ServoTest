@@ -27,3 +27,4 @@ echo ""
 
 # Start servo control with output
 python3 servo_control.py
+#kdnfgnergjn

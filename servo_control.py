@@ -43,7 +43,7 @@ class RoboticArmNode(Node):
         
         # Path planning enabled by default
         self.use_path_planning = True
-        
+        #1
         # Smooth movement parameters
         self.movement_speed = 2.0  # degrees per step (smaller = smoother)
         self.step_delay = 0.02     # seconds between steps (50Hz update)
