@@ -58,7 +58,7 @@ class RoboticArmNode(Node):
             String, 'arm_demo', self.demo_callback, 10)
         self.xyz_subscription = self.create_subscription(
             Point, 'arm_xyz', self.xyz_callback, 10)
-        
+        #jhgjduoidgoiudg
         # Wait for topics to settle
         self.get_logger().info('Step 2: Waiting for ROS2 topics to settle...')
         time.sleep(1.0)
@@ -164,8 +164,12 @@ class RoboticArmNode(Node):
         self.smooth_move_to_angles(list(msg.data))
         self.current_xyz = self.get_current_xyz_position(list(msg.data))
         
-        self.get_logger().info(f'Moved to: ({self.current_xyz[0]:.2f}, '
-                              f'{self.current_xyz[1]:.2f}, {self.current_xyz[2]:.2f}) cm')
+        # Log both servo angles AND XYZ position
+        self.get_logger().info(
+            f'Angles: [{msg.data[0]:.1f}° {msg.data[1]:.1f}° {msg.data[2]:.1f}° '
+            f'{msg.data[3]:.1f}° {msg.data[4]:.1f}° {msg.data[5]:.1f}°] | '
+            f'XYZ: ({self.current_xyz[0]:.2f}, {self.current_xyz[1]:.2f}, {self.current_xyz[2]:.2f}) cm'
+        )
     
     def demo_callback(self, msg):
         """Demo commands."""
