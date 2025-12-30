@@ -167,6 +167,168 @@ Test kinematics:
 python3 kinematics.py
 ```
 
+## Path Planning
+
+The `PathPlanner` class creates smooth, collision-free paths between two positions.
+
+### Features
+
+- **Smooth Path Planning**: Interpolates joint angles to ensure smooth motion
+- **Linear Path Planning**: Creates straight-line paths in Cartesian space
+- **Configurable Step Size**: Control maximum joint angle changes per waypoint
+- **Automatic Waypoint Generation**: Calculates optimal number of waypoints
+
+### Command-Line Testing
+
+Test the path planner with custom positions:
+
+```bash
+# Run with default test case
+python3 path_planner.py
+
+# Specify custom start and end positions
+python3 path_planner.py --start 0 -31.07 29.15 --end -31.76 11.56 26.34
+
+# Adjust max joint change for smoother motion (smaller steps)
+python3 path_planner.py --start 10 20 30 --end -10 -20 25 --max-change 3
+
+# Faster motion with larger steps
+python3 path_planner.py --start 0 0 30 --end 20 20 30 --max-change 10
+
+# See all options
+python3 path_planner.py --help
+```
+
+**Command-line arguments:**
+- `--start X Y Z`: Starting position in cm (default: -0.00 -31.07 29.15)
+- `--end X Y Z`: Target position in cm (default: -31.76 11.56 26.34)
+- `--max-change DEGREES`: Max joint angle change per waypoint (default: 5.0°)
+
+### Usage
+
+```python
+from kinematics import ArmKinematics
+from path_planner import PathPlanner
+
+# Initialize
+kinematics = ArmKinematics()
+planner = PathPlanner(kinematics)
+
+# Define start and end positions (in cm)
+start_xyz = (-0.00, -31.07, 29.15)
+end_xyz = (-31.76, 11.56, 26.34)
+
+# Plan a smooth path (max 5° joint change per step)
+waypoints = planner.plan_best_path(start_xyz, end_xyz, max_joint_change=5.0)
+
+if waypoints:
+    print(f"Path created with {len(waypoints)} waypoints")
+    
+    # Execute each waypoint
+    for i, (x, y, z) in enumerate(waypoints):
+        print(f"Moving to waypoint {i}: ({x:.2f}, {y:.2f}, {z:.2f})")
+        # Send to servos here
+```
+
+### Planning Methods
+
+#### 1. Smooth Path (Joint Space Interpolation)
+Best for most applications - ensures smooth servo motion.
+
+```python
+waypoints = planner.plan_smooth_path(start_xyz, end_xyz, max_joint_change=5.0)
+```
+
+Parameters:
+- `start_xyz`: Starting position (x, y, z) in cm
+- `end_xyz`: Target position (x, y, z) in cm
+- `max_joint_change`: Maximum degrees change per waypoint (default: 5.0°)
+
+#### 2. Linear Path (Cartesian Space)
+Creates a straight line in XYZ space - may cause jerky joint motion.
+
+```python
+waypoints = planner.plan_linear_path(start_xyz, end_xyz, num_waypoints=20)
+```
+
+Parameters:
+- `start_xyz`: Starting position (x, y, z) in cm
+- `end_xyz`: Target position (x, y, z) in cm
+- `num_waypoints`: Number of intermediate waypoints (default: 20)
+
+#### 3. Best Path (Recommended)
+Automatically selects the best planning method.
+
+```python
+waypoints = planner.plan_best_path(start_xyz, end_xyz, max_joint_change=5.0)
+```
+
+### Example Output
+
+```bash
+$ python3 path_planner.py --start 0 -31 29 --end -32 12 26 --max-change 5
+
+============================================================
+PATH PLANNER TEST
+============================================================
+
+============================================================
+Test: Move with 5.0° max joint changes
+
+🔍 Planning smooth path...
+   From: (0.00, -31.00, 29.00) cm
+   To:   (-32.00, 12.00, 26.00) cm
+   Max joint change: 5.0° per step
+   Max angle change needed: 47.23°
+   Generating 10 waypoints...
+   Waypoint 0/9: (0.00, -31.00, 29.00) cm
+   Waypoint 2/9: (-12.45, -21.34, 28.12) cm
+   Waypoint 4/9: (-22.18, -9.82, 27.28) cm
+   Waypoint 6/9: (-28.56, 3.21, 26.62) cm
+   Waypoint 9/9: (-32.00, 12.00, 26.00) cm
+✓ Path created with 10 waypoints
+
+✓ Path with 10 waypoints:
+
+   Waypoint breakdown:
+      0: (   0.00,  -31.00,   29.00) cm
+      1: (  -6.89,  -26.42,   28.56) cm
+      2: ( -12.45,  -21.34,   28.12) cm
+      ...
+
+   Total path length: 46.82 cm
+   Average step size: 5.20 cm
+
+============================================================
+```
+
+### Integration with ROS2/Servos
+
+```python
+# After planning, execute the path
+for waypoint in waypoints:
+    x, y, z = waypoint
+    
+    # Get joint angles for this waypoint
+    angles = kinematics.inverse_kinematics(x, y, z)
+    
+    if angles:
+        # Send angles to your servo controller
+        # servo_controller.move_to_angles(angles)
+        
+        # Wait for movement to complete
+        # time.sleep(0.1)
+        pass
+```
+
+### Tips
+
+- **Smoother Motion**: Use smaller `max_joint_change` values (3-5°)
+- **Faster Motion**: Use larger `max_joint_change` values (10-15°)
+- **Obstacle Avoidance**: Check each waypoint before execution
+- **Path Validation**: Always check if path is `None` before executing
+- **Test First**: Use command-line testing to verify paths before using in code
+
 ## Troubleshooting
 
 ### I2C Not Detected
@@ -230,3 +392,4 @@ ros2 topic pub --once /arm_demo std_msgs/msg/String "data: 'demo'"
 ## License
 
 MIT
+````

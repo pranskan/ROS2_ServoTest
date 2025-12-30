@@ -57,19 +57,34 @@ class PathPlanner:
             print(f"❌ End position unreachable")
             return None
         
+        # Show joint angles for debugging
+        joint_names = ['Gripper', 'Wrist Roll', 'Wrist Pitch', 'Elbow', 'Shoulder', 'Base']
+        print(f"\n   Start joint angles:")
+        for i, (name, angle) in enumerate(zip(joint_names, start_angles)):
+            print(f"     {name:12s}: {angle:6.2f}°")
+        
+        print(f"\n   End joint angles:")
+        for i, (name, angle) in enumerate(zip(joint_names, end_angles)):
+            print(f"     {name:12s}: {angle:6.2f}°")
+        
         # Calculate how many steps we need based on max joint change
         max_angle_diff = 0
+        max_joint_idx = -1
+        print(f"\n   Joint angle changes:")
         for i in range(6):
             angle_diff = abs(end_angles[i] - start_angles[i])
+            print(f"     {joint_names[i]:12s}: {angle_diff:6.2f}°")
             if angle_diff > max_angle_diff:
                 max_angle_diff = angle_diff
+                max_joint_idx = i
+        
+        print(f"\n   Largest change: {joint_names[max_joint_idx]} ({max_angle_diff:.2f}°)")
         
         # Number of steps needed (round up)
         num_steps = int(math.ceil(max_angle_diff / max_joint_change))
         if num_steps == 0:
             num_steps = 1
         
-        print(f"   Max angle change needed: {max_angle_diff:.2f}°")
         print(f"   Generating {num_steps + 1} waypoints...")
         
         waypoints = []
@@ -91,7 +106,7 @@ class PathPlanner:
             
             # Show progress
             if i % max(1, num_steps // 5) == 0 or i == num_steps:
-                print(f"   Waypoint {i}/{num_steps}: ({waypoint[0]:.2f}, {waypoint[1]:.2f}, {waypoint[2]:.2f}) cm")
+                print(f"   Waypoint {i}/{num_steps}: ({waypoint[0]:7.2f}, {waypoint[1]:7.2f}, {waypoint[2]:7.2f}) cm")
         
         print(f"✓ Path created with {len(waypoints)} waypoints")
         return waypoints
@@ -181,6 +196,9 @@ Examples:
   
   # More waypoints (smaller steps)
   python3 path_planner.py --start 0 0 30 --end 20 20 30 --max-change 3
+  
+  # Show what position corresponds to
+  python3 path_planner.py --check-only --start 0 -31.07 29.15
         """
     )
     
@@ -210,6 +228,12 @@ Examples:
         help='Maximum joint angle change per waypoint in degrees (default: 5.0)'
     )
     
+    parser.add_argument(
+        '--check-only',
+        action='store_true',
+        help='Only check start position IK solution, do not plan path'
+    )
+    
     args = parser.parse_args()
     
     print("=" * 60)
@@ -224,6 +248,19 @@ Examples:
     start_pos = tuple(args.start)
     end_pos = tuple(args.end)
     max_change = args.max_change
+    
+    # If check-only mode, just show IK solution
+    if args.check_only:
+        print(f"\n📍 Checking position: ({start_pos[0]:.2f}, {start_pos[1]:.2f}, {start_pos[2]:.2f}) cm")
+        angles = kinematics.inverse_kinematics(*start_pos)
+        if angles:
+            joint_names = ['Gripper', 'Wrist Roll', 'Wrist Pitch', 'Elbow', 'Shoulder', 'Base']
+            print(f"\n✓ IK Solution:")
+            for name, angle in zip(joint_names, angles):
+                print(f"   {name:12s}: {angle:6.2f}°")
+        else:
+            print(f"\n❌ Position unreachable")
+        return
     
     print("\n" + "=" * 60)
     print(f"Test: Move with {max_change}° max joint changes")
