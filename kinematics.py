@@ -66,41 +66,24 @@ class ArmKinematics:
         Calculate XYZ from joint angles.
         
         CALIBRATED from real measurements:
-        - Base 0° → X=17, Y=0   [rotated left - limited reach]
-        - Base 90° → X=25, Y=0  [forward - maximum reach]
-        - Base 180° → X=17, Y=0 [rotated right - limited reach]
+        - Base 0° → X=17, Y=-15.7 (rotated left)
+        - Base 90° → X=25, Y=0 (forward - maximum reach)
+        - Base 180° → X=17, Y=15.7 (rotated right)
         
-        Base servo rotates horizontally, affecting X (forward/back axis).
-        When at 0° or 180°, reach is reduced to 17cm.
-        When at 90°, reach is maximum at 25cm.
-        Y stays at 0 because we're rotating in the XZ plane.
+        Base servo rotates around Z axis, changing both X and Y.
+        Height fixed at 40cm.
         """
         # Base servo angle (0-180°)
         base_servo_angle = angles[0]
         
-        # The base servo rotates the arm left/right around the Z axis
-        # But we measure X as forward/back distance
-        
-        # Distance from center (varies with base angle)
-        # At 90° (forward): 25cm reach
-        # At 0° (left): 17cm reach  
-        # At 180° (right): 17cm reach
-        
         # Base angle in radians (90° = 0 rad = forward)
         base_rad = (base_servo_angle - 90.0) * math.pi / 180.0
         
-        # Reach formula: reach = 17 + 8*cos²(base_rad)
-        # At base_rad=0 (90°): reach = 17 + 8*1 = 25 ✓
-        # At base_rad=±π/2 (0°/180°): reach = 17 + 8*0 = 17 ✓
-        reach = 17.0 + 8.0 * math.cos(base_rad)**2
+        # Correct: X = 17 + 8*cos²(base_rad) [gives 25 at 90°, 17 at 0°/180° ✓]
+        # Y = 15.7*sin(base_rad) [gives ±15.7 at 0°/180°, 0 at 90° ✓]
         
-        # X is the main forward/backward axis
-        # When base points forward (90°), X = reach
-        # When base points sideways (0° or 180°), X = reach (reduced)
-        x = reach
-        
-        # Y remains 0 (we're rotating around vertical Z axis)
-        y = 0.0
+        x = 17.0 + 8.0 * math.cos(base_rad)**2
+        y = 15.7 * math.sin(base_rad)
         
         # Height is fixed (only calibrated at all 90°)
         z = 40.0
@@ -119,7 +102,7 @@ def test_kinematics():
     # Test points based on actual measurements
     test_points = [
         (0, "Base 0° (rotated left)"),
-        (90, "Base 90° (pointing forward - max reach)"),
+        (90, "Base 90° (pointing forward)"),
         (180, "Base 180° (rotated right)"),
     ]
     
@@ -133,13 +116,13 @@ def test_kinematics():
         print(f"  Servo angles: Base={base_angle}°, Rest=90°")
         print(f"  Calculated: X={pos['x']:.2f}, Y={pos['y']:.2f}, Z={pos['z']:.2f} cm")
         
-        # Expected values
+        # Expected values from measurements
         if base_angle == 0:
-            print(f"  Expected: X=17, Y=0, Z=40 ✓")
+            print(f"  Expected: X=17, Y≈-15.7, Z=40 ✓")
         elif base_angle == 90:
             print(f"  Expected: X=25, Y=0, Z=40 ✓")
         elif base_angle == 180:
-            print(f"  Expected: X=17, Y=0, Z=40 ✓")
+            print(f"  Expected: X=17, Y≈15.7, Z=40 ✓")
         print()
     
     print("=" * 70)
