@@ -70,6 +70,51 @@ See initial_pi_setup.sh for detailed commands.
 
 ## Usage
 
+### Running Multiple Control Methods Simultaneously
+
+The servo control node can receive commands from multiple sources at the same time through ROS2 topics:
+
+**Terminal 1 - Start servo control node (required):**
+```bash
+cd ~/ROS2_ServoTest
+source /opt/ros/jazzy/setup.bash
+source ~/ros2_servo_venv/bin/activate
+python3 servo_control.py
+```
+
+**Terminal 2 - Keyboard teleoperation (optional):**
+```bash
+cd ~/ROS2_ServoTest
+source /opt/ros/jazzy/setup.bash
+source ~/ros2_servo_venv/bin/activate
+python3 teleop_keyboard.py
+```
+
+**Terminal 3 - Send ROS2 commands (optional):**
+```bash
+source /opt/ros/jazzy/setup.bash
+
+# Move to XYZ position (with path planning)
+ros2 topic pub --once /arm_xyz geometry_msgs/msg/Point "x: 20.0
+y: 0.0
+z: 30.0"
+
+# Direct motor control
+ros2 topic pub --once /arm_command std_msgs/msg/Float32MultiArray "data: [90.0, 90.0, 90.0, 90.0, 90.0, 90.0]"
+```
+
+**How it works:**
+- All control methods publish to ROS2 topics (`/arm_command`, `/arm_xyz`, etc.)
+- `servo_control.py` subscribes to these topics and moves the servos
+- Commands are processed in the order they arrive
+- Multiple publishers can coexist without conflicts
+
+**Typical workflow:**
+1. Start `servo_control.py` (always required)
+2. Use `teleop_keyboard.py` for manual exploration and testing
+3. Use `ros2 topic pub` or custom scripts for automated sequences
+4. Switch between control methods at any time
+
 ### Interactive Testing (Recommended First)
 
 ```bash
@@ -86,6 +131,36 @@ python3 test_arm.py
 - `status` - Show current positions
 - `reset` - Disable all PWM
 - `quit` - Exit
+
+### Keyboard Teleoperation
+
+Control the arm interactively with real-time XYZ position feedback:
+
+```bash
+cd ~/ROS2_ServoTest
+source /opt/ros/jazzy/setup.bash
+source ~/ros2_servo_venv/bin/activate
+python3 teleop_keyboard.py
+```
+
+**Controls:**
+- **0-5**: Select motor (Gripper, Wrist Roll, Wrist Pitch, Elbow, Shoulder, Base)
+- **+/=**: Increase angle by current increment
+- **-/_**: Decrease angle by current increment
+- **]**: Increase by 1°
+- **[**: Decrease by 1°
+- **c**: Center all motors to 90°
+- **s**: Show current status with XYZ position
+- **f**: Fast mode (10° increments)
+- **n**: Normal mode (5° increments)
+- **m**: Slow mode (1° increments)
+- **h**: Show help
+- **q**: Quit
+
+**Features:**
+- Real-time XYZ position display after each movement
+- Requires `servo_control.py` running in another terminal
+- Non-blocking - can run alongside other control methods
 
 ### ROS2 Node
 
@@ -117,15 +192,22 @@ ros2 topic pub --once /arm_command std_msgs/msg/Float32MultiArray "data: [90.0, 
 
 # Return to center
 ros2 topic pub --once /arm_demo std_msgs/msg/String "data: 'center'"
+
+# Path planning controls
+ros2 topic pub --once /arm_obstacles std_msgs/msg/String "data: 'enable_planning'"
+ros2 topic pub --once /arm_obstacles std_msgs/msg/String "data: 'disable_planning'"
 ```
 
 ## ROS2 Topics
 
-| Topic | Message Type | Description |
-|-------|-------------|-------------|
-| `/arm_command` | Float32MultiArray | Direct motor angles [6 values, 0-180°] |
-| `/arm_demo` | String | Demo commands: 'demo', 'sweep:N', 'center' |
-| `/arm_xyz` | Point | XYZ positioning (uses inverse kinematics) |
+| Topic | Message Type | Description | Publishers |
+|-------|-------------|-------------|------------|
+| `/arm_command` | Float32MultiArray | Direct motor angles [6 values, 0-180°] | teleop_keyboard.py, ros2 CLI |
+| `/arm_demo` | String | Demo commands: 'demo', 'sweep:N', 'center' | ros2 CLI |
+| `/arm_xyz` | Point | XYZ positioning (uses inverse kinematics) | **path_executor.py**, ros2 CLI, custom scripts |
+| `/arm_obstacles` | String | Path planning: 'enable_planning', 'disable_planning', 'add:name:bounds' | ros2 CLI |
+
+**Note:** All publishers can run simultaneously. The `servo_control.py` node processes commands as they arrive.
 
 ## Motor Channel Mapping
 
@@ -178,9 +260,50 @@ The `PathPlanner` class creates smooth, collision-free paths between two positio
 - **Configurable Step Size**: Control maximum joint angle changes per waypoint
 - **Automatic Waypoint Generation**: Calculates optimal number of waypoints
 
-### Command-Line Testing
+### Using Path Planning with ROS2
 
-Test the path planner with custom positions:
+**Terminal 1 - Start servo control (required):**
+```bash
+cd ~/ROS2_ServoTest
+source /opt/ros/jazzy/setup.bash
+source ~/ros2_servo_venv/bin/activate
+python3 servo_control.py
+```
+
+**Terminal 2 - Execute a planned path:**
+```bash
+cd ~/ROS2_ServoTest
+source /opt/ros/jazzy/setup.bash
+source ~/ros2_servo_venv/bin/activate
+
+# Execute path with default positions
+python3 path_executor.py
+
+# Custom start and end positions
+python3 path_executor.py --start 0 -31 29 --end -32 12 26
+
+# Smoother motion (smaller steps, slower)
+python3 path_executor.py --start 0 -31 29 --end -32 12 26 --max-change 3 --delay 0.3
+
+# Faster motion (larger steps, quicker)
+python3 path_executor.py --start 0 -31 29 --end -32 12 26 --max-change 10 --delay 0.1
+```
+
+**Path executor arguments:**
+- `--start X Y Z`: Starting position in cm (default: 0.0 -31.07 29.15)
+- `--end X Y Z`: Target position in cm (default: -31.76 11.56 26.34)
+- `--max-change DEGREES`: Max joint angle change per waypoint (default: 5.0°)
+- `--delay SECONDS`: Delay between waypoints (default: 0.2s)
+
+**How it works:**
+1. `path_executor.py` calculates waypoints using path planner
+2. Publishes each waypoint to `/arm_xyz` topic
+3. `servo_control.py` receives waypoints and moves servos
+4. Waits between waypoints for smooth execution
+
+### Command-Line Testing (No ROS2)
+
+Test the path planner algorithm without ROS2:
 
 ```bash
 # Run with default test case
@@ -189,20 +312,14 @@ python3 path_planner.py
 # Specify custom start and end positions
 python3 path_planner.py --start 0 -31.07 29.15 --end -31.76 11.56 26.34
 
-# Adjust max joint change for smoother motion (smaller steps)
+# Check if a position is reachable
+python3 path_planner.py --check-only --start 0 -31.07 29.15
+
+# Adjust max joint change
 python3 path_planner.py --start 10 20 30 --end -10 -20 25 --max-change 3
-
-# Faster motion with larger steps
-python3 path_planner.py --start 0 0 30 --end 20 20 30 --max-change 10
-
-# See all options
-python3 path_planner.py --help
 ```
 
-**Command-line arguments:**
-- `--start X Y Z`: Starting position in cm (default: -0.00 -31.07 29.15)
-- `--end X Y Z`: Target position in cm (default: -31.76 11.56 26.34)
-- `--max-change DEGREES`: Max joint angle change per waypoint (default: 5.0°)
+**Note:** `path_planner.py` only tests the algorithm - it doesn't move the robot. Use `path_executor.py` to actually execute paths.
 
 ### Usage
 
@@ -368,6 +485,9 @@ This is normal - servos initialize one at a time with 0.2s delays to prevent sim
 | File | Purpose |
 |------|---------|
 | `servo_control.py` | Main ROS2 node (requires ROS2) |
+| `teleop_keyboard.py` | Keyboard teleoperation with XYZ display |
+| `path_executor.py` | **Execute planned paths via ROS2** |
+| `path_planner.py` | Path planning algorithm (testing only) |
 | `test_arm.py` | Interactive testing (no ROS2 needed) |
 | `kinematics.py` | Inverse kinematics math |
 | `calibrate_servo.py` | Find optimal pulse ranges |
@@ -392,4 +512,3 @@ ros2 topic pub --once /arm_demo std_msgs/msg/String "data: 'demo'"
 ## License
 
 MIT
-````
