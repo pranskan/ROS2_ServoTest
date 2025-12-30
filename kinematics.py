@@ -56,11 +56,11 @@ class ArmKinematics:
             link_lengths: List of [L1, L2, L3, L4] lengths in cm
         """
         if link_lengths is None:
-            # Default link lengths - MEASURE YOUR ROBOT AND UPDATE THESE!
-            self.L1 = 10.0  # Base to shoulder height (cm)
-            self.L2 = 15.0  # Shoulder to elbow length (cm)
-            self.L3 = 15.0  # Elbow to wrist length (cm)
-            self.L4 = 10.0  # Wrist to gripper length (cm)
+            # YOUR ROBOT'S ACTUAL MEASUREMENTS (in cm)
+            self.L1 = 10.5  # Base to shoulder height: 105mm
+            self.L2 = 12.9  # Shoulder to elbow length: 129mm
+            self.L3 = 11.0  # Elbow to wrist length: 110mm
+            self.L4 = 15.0  # Wrist to gripper tip: 150mm
         else:
             self.L1, self.L2, self.L3, self.L4 = link_lengths
         
@@ -328,6 +328,6 @@ def test_kinematics():
     print("3. Run this test again to verify workspace")
     print("=" * 60 + "\n")
 
-
+#1
 if __name__ == "__main__":
     test_kinematics()
