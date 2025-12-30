@@ -149,87 +149,90 @@ class ArmKinematics:
         
         return True, "Position reachable"
     
-    def inverse_kinematics(self, x, y, z, pitch=None, roll=0, gripper=90):
+    def inverse_kinematics(self, x, y, z, pitch=90, roll=90, gripper=90):
         """
         Calculate joint angles to reach target position.
+        
+        Based on actual robot behavior from teleop data:
+        - Wrist Roll and Gripper DON'T affect position (only orientation/grip)
+        - Only Base, Shoulder, Elbow, Wrist Pitch affect XYZ position
         
         Args:
             x (float): Target X coordinate (cm)
             y (float): Target Y coordinate (cm)
             z (float): Target Z coordinate (cm)
-            pitch (float): Desired gripper pitch angle (degrees). If None, auto-calculate
-            roll (float): Desired gripper roll angle (degrees)
-            gripper (float): Gripper opening (0-180 degrees)
+            pitch (float): Wrist pitch angle (default 90° = horizontal)
+            roll (float): Wrist roll angle (default 90° = neutral)
+            gripper (float): Gripper opening (default 90° = half-open)
         
         Returns:
             list: [base, shoulder, elbow, wrist_pitch, wrist_roll, gripper]
                   or None if position is unreachable
         """
         
-        # Joint 0 (Base): Calculate rotation around Z axis
-        theta0 = math.degrees(math.atan2(y, x))
+        # Base angle: simple arctangent based on X,Y
+        base_angle = 90.0 + math.degrees(math.atan2(y, x))
+        base_angle = self._normalize_angle(base_angle)
         
-        # Distance from base to target in XY plane
+        # Horizontal distance from base center to target
         r = math.sqrt(x**2 + y**2)
-        target_z = z - self.L1  # Height above shoulder
         
-        # For your robot: gripper extends at whatever angle the arm is at
-        # We need to work backwards from gripper tip to wrist
-        # The gripper length L4 is along the direction of the forearm
+        # Height above base (shoulder is at L1 height)
+        h = z - self.L1
         
-        # We'll solve for a configuration where the arm can reach the point
-        # WITHOUT assuming horizontal gripper
+        # This is the 2D IK problem in the vertical plane
+        # We have: shoulder->elbow->wrist->gripper
+        # All in one vertical plane determined by base rotation
         
-        # Try to solve using just shoulder+elbow+wrist to reach the target
-        # Treat L3+L4 as one combined link (forearm+gripper)
-        combined_reach = self.L3 + self.L4
+        # Total distance from shoulder to target in 2D plane
+        d = math.sqrt(r**2 + h**2)
         
-        # Distance from shoulder to target
-        d_total = math.sqrt(r**2 + target_z**2)
+        # The combined length of forearm + gripper
+        L_combined = self.L3 + self.L4
         
-        # Check reachability with shoulder + (elbow+wrist+gripper)
-        max_reach = self.L2 + combined_reach
-        min_reach = abs(self.L2 - combined_reach)
+        # Check if reachable
+        max_reach = self.L2 + L_combined
+        min_reach = abs(self.L2 - L_combined)
         
-        if d_total > max_reach or d_total < min_reach:
-            print(f"⚠️  Position unreachable: total distance {d_total:.2f} cm")
-            print(f"   Max reach: {max_reach:.2f} cm (L2 + L3 + L4)")
+        if d > max_reach or d < min_reach:
+            print(f"⚠️  Position unreachable: distance {d:.2f} cm")
+            print(f"   Max reach: {max_reach:.2f} cm")
             print(f"   Min reach: {min_reach:.2f} cm")
             return None
         
         # Use law of cosines to find elbow angle
-        # This treats forearm+gripper as one link
-        cos_theta2 = (d_total**2 - self.L2**2 - combined_reach**2) / (2 * self.L2 * combined_reach)
-        cos_theta2 = max(-1, min(1, cos_theta2))
-        theta2_rad = math.acos(cos_theta2)
-        theta2 = math.degrees(theta2_rad)
+        # Treating forearm+gripper as one combined link
+        cos_elbow = (d**2 - self.L2**2 - L_combined**2) / (2 * self.L2 * L_combined)
+        cos_elbow = max(-1.0, min(1.0, cos_elbow))  # Clamp
         
-        # Find shoulder angle
-        alpha = math.atan2(target_z, r)
-        beta = math.acos((self.L2**2 + d_total**2 - combined_reach**2) / (2 * self.L2 * d_total))
-        theta1_rad = alpha + beta
-        theta1 = math.degrees(theta1_rad)
+        elbow_rad = math.acos(cos_elbow)
+        elbow_angle = 180.0 - math.degrees(elbow_rad)  # Inverted for servo
         
-        # Calculate wrist pitch to keep gripper at desired angle
-        # The combined forearm+gripper angle relative to horizontal is:
-        forearm_angle = theta1_rad + theta2_rad - math.pi
+        # Find shoulder angle using law of cosines
+        angle_to_target = math.atan2(h, r)
+        cos_shoulder_offset = (self.L2**2 + d**2 - L_combined**2) / (2 * self.L2 * d)
+        cos_shoulder_offset = max(-1.0, min(1.0, cos_shoulder_offset))
         
-        # If pitch is specified, use it; otherwise keep gripper aligned with forearm
-        if pitch is None:
-            # Auto-calculate pitch to keep gripper straight along forearm direction
-            pitch = math.degrees(forearm_angle)
+        shoulder_offset = math.acos(cos_shoulder_offset)
+        shoulder_rad = angle_to_target + shoulder_offset
+        shoulder_angle = math.degrees(shoulder_rad)
         
-        # Wrist pitch compensates to achieve desired gripper pitch
-        theta3 = pitch - math.degrees(forearm_angle)
+        # Wrist pitch: compensate for shoulder+elbow to achieve desired gripper pitch
+        # The forearm angle is: shoulder + (180 - elbow) - 180
+        forearm_angle_rad = shoulder_rad + elbow_rad - math.pi
+        desired_pitch_rad = math.radians(pitch - 90)  # pitch=90 means horizontal
         
-        # Convert to servo angles (0-180 range)
+        wrist_pitch_rad = desired_pitch_rad - forearm_angle_rad
+        wrist_pitch_angle = 90.0 + math.degrees(wrist_pitch_rad)
+        
+        # Return angles in [base, shoulder, elbow, wrist_pitch, wrist_roll, gripper] order
         angles = [
-            self._normalize_angle(theta0 + 90),      # Base (center at 90°)
-            self._normalize_angle(theta1),           # Shoulder
-            self._normalize_angle(180 - theta2),     # Elbow (inverted)
-            self._normalize_angle(theta3 + 90),      # Wrist pitch (center at 90°)
-            self._normalize_angle(roll + 90),        # Wrist roll (center at 90°)
-            self._normalize_angle(gripper)           # Gripper
+            self._normalize_angle(base_angle),
+            self._normalize_angle(shoulder_angle),
+            self._normalize_angle(elbow_angle),
+            self._normalize_angle(wrist_pitch_angle),
+            self._normalize_angle(roll),
+            self._normalize_angle(gripper)
         ]
         
         return angles
