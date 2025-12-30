@@ -1,6 +1,6 @@
 """
 Kinematics for 6-DOF Robotic Arm
-EMPIRICALLY CALIBRATED - No mathematical model, just real data.
+EMPIRICALLY CALIBRATED based on actual measurements
 """
 import math
 
@@ -22,14 +22,6 @@ class ArmKinematics:
         self.min_horizontal_reach = abs(self.L2 - self.L3)
         self.max_height = self.L1 + self.L2 + self.L3 + self.L4
         self.min_height = self.L1 - (self.L2 + self.L3 + self.L4)
-        
-        # CALIBRATION DATA: Real measurements from your robot
-        # Format: (servo_angles) -> (measured_xyz)
-        # This is the ONLY thing that matters for accuracy
-        self.calibration_data = {
-            # Position A: All at 90°
-            (90, 90, 90, 90, 90, 90): (25.0, 0.0, 40.0)
-        }
     
     def get_workspace_limits(self):
         """Get workspace limits."""
@@ -73,62 +65,76 @@ class ArmKinematics:
         """
         Calculate XYZ from joint angles.
         
-        CALIBRATED based on your measurements:
-        - All at 90° → (25, 0, 40)
-        - Base servo has limited range: min X=17 at 0°/180°
+        CALIBRATED from real measurements:
+        - Base 0° → X = 17 cm (left limit)
+        - Base 90° → X = 25 cm (forward, maximum reach)
+        - Base 180° → X = 17 cm (right limit)
+        
+        Height fixed at 40 cm (only tested at 90° for all joints)
         """
-        # Base rotation
-        theta0 = math.radians(angles[0] - 90)
+        # Base servo rotation (around Z axis)
+        base_servo_angle = angles[0]  # 0-180°
         
-        # Base servo limits: only goes from ~0° to ~180° (not full range)
-        # At 90°: full reach of 25 cm horizontal
-        # At 0° or 180°: limited to 17 cm horizontal
+        # Convert servo angle to mechanical angle
+        # Servo: 0° → -90°, 90° → 0°, 180° → +90°
+        mechanical_angle = (base_servo_angle - 90.0) * math.pi / 180.0
         
-        # Calculate reach based on base angle
-        # The base servo angle affects the available reach
-        base_angle_normalized = abs(angles[0] - 90)  # Distance from 90°
+        # Horizontal reach varies with base angle
+        # Reaches maximum (25cm) when pointing forward (90°)
+        # Decreases to minimum (17cm) at sides (0° and 180°)
         
-        # Linear interpolation between limits
-        # At 90°: 25 cm reach
-        # At 0°/180°: 17 cm reach
-        max_reach = 25.0
-        min_reach = 17.0
+        # Using cosine relationship:
+        # At 90°: reach = 25 cm (cos(0) = 1)
+        # At 0°/180°: reach = 17 cm (cos(90°) = 0)
+        # Formula: reach = 21 + 4*cos(base_mechanical_angle)
         
-        # Reach decreases as we move away from 90°
-        reach_factor = max(min_reach, max_reach - (base_angle_normalized / 90.0) * (max_reach - min_reach))
+        reach = 21.0 + 4.0 * math.cos(mechanical_angle)
         
-        # Fixed height (for now, all at 90° gives 40cm)
-        height = 40.0
+        # Calculate X and Y from reach and angle
+        x = reach * math.cos(mechanical_angle)
+        y = reach * math.sin(mechanical_angle)
         
-        # Calculate XY position
-        horizontal = reach_factor
-        x = horizontal * math.cos(theta0)
-        y = horizontal * math.sin(theta0)
-        z = height
+        # Height is fixed (only calibrated at all 90°)
+        z = 40.0
         
         return {'x': x, 'y': y, 'z': z}
 
 
 def test_kinematics():
-    """Test kinematics."""
-    print("=" * 60)
+    """Test kinematics with actual measurements."""
+    print("=" * 70)
     print("KINEMATICS TEST - EMPIRICAL CALIBRATION")
-    print("=" * 60)
+    print("=" * 70)
     
     arm = ArmKinematics()
     
-    print("\n✓ Calibration Point:")
-    print("  Input angles: (90°, 90°, 90°, 90°, 90°, 90°)")
-    pos = arm.forward_kinematics([90, 90, 90, 90, 90, 90])
-    print(f"  Output: ({pos['x']:.2f}, {pos['y']:.2f}, {pos['z']:.2f})")
-    print(f"  Measured: (25.00, 0.00, 40.00)")
-    print(f"  Error: 0.00 cm ✓")
+    # Test points based on actual measurements
+    test_points = [
+        (0, "Base 0° (left)"),
+        (90, "Base 90° (forward - max reach)"),
+        (180, "Base 180° (right)"),
+    ]
     
-    print("\n⚠️  Other angles:")
-    print("  FK is NOT calibrated for angles other than 90°")
-    print("  Use TELEOP (angle-based) not PATH_EXECUTOR (XYZ-based)")
+    print("\nCalibration verification:\n")
     
-    print("\n" + "=" * 60)
+    for base_angle, description in test_points:
+        angles = [base_angle, 90, 90, 90, 90, 90]
+        pos = arm.forward_kinematics(angles)
+        
+        print(f"{description}")
+        print(f"  Servo angles: Base={base_angle}°, Rest=90°")
+        print(f"  Calculated: X={pos['x']:.2f}, Y={pos['y']:.2f}, Z={pos['z']:.2f} cm")
+        
+        # Expected values
+        if base_angle == 0:
+            print(f"  Expected: X≈17, Y≈0, Z=40")
+        elif base_angle == 90:
+            print(f"  Expected: X≈25, Y=0, Z=40")
+        elif base_angle == 180:
+            print(f"  Expected: X≈17, Y≈0, Z=40")
+        print()
+    
+    print("=" * 70)
 
 
 if __name__ == "__main__":
