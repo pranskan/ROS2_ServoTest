@@ -73,26 +73,38 @@ class ArmKinematics:
         """
         Calculate XYZ from joint angles.
         
-        CALIBRATED: Only accurate at (90°, 90°, 90°, 90°, 90°, 90°)
-        For other angles, accuracy is unknown - use with caution!
+        CALIBRATED based on your measurements:
+        - All at 90° → (25, 0, 40)
+        - Base servo has limited range: min X=17 at 0°/180°
         """
-        # Round to nearest 5 degrees to check calibration data
-        rounded = tuple(round(a / 5) * 5 for a in angles)
+        # Base rotation
+        theta0 = math.radians(angles[0] - 90)
         
-        if rounded in self.calibration_data:
-            x, y, z = self.calibration_data[rounded]
-        else:
-            # Use the base rotation + default position
-            # This is a ROUGH approximation
-            theta0 = math.radians(angles[0] - 90)
-            
-            # Hardcoded for 90° position
-            base_r = 25.0
-            base_z = 40.0
-            
-            x = base_r * math.cos(theta0)
-            y = base_r * math.sin(theta0)
-            z = base_z
+        # Base servo limits: only goes from ~0° to ~180° (not full range)
+        # At 90°: full reach of 25 cm horizontal
+        # At 0° or 180°: limited to 17 cm horizontal
+        
+        # Calculate reach based on base angle
+        # The base servo angle affects the available reach
+        base_angle_normalized = abs(angles[0] - 90)  # Distance from 90°
+        
+        # Linear interpolation between limits
+        # At 90°: 25 cm reach
+        # At 0°/180°: 17 cm reach
+        max_reach = 25.0
+        min_reach = 17.0
+        
+        # Reach decreases as we move away from 90°
+        reach_factor = max(min_reach, max_reach - (base_angle_normalized / 90.0) * (max_reach - min_reach))
+        
+        # Fixed height (for now, all at 90° gives 40cm)
+        height = 40.0
+        
+        # Calculate XY position
+        horizontal = reach_factor
+        x = horizontal * math.cos(theta0)
+        y = horizontal * math.sin(theta0)
+        z = height
         
         return {'x': x, 'y': y, 'z': z}
 
