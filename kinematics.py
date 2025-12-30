@@ -66,24 +66,26 @@ class ArmKinematics:
         Calculate XYZ from joint angles.
         
         CALIBRATED from real measurements:
-        - Base 0° → X=17, Y=-15.7 (rotated left)
+        - Base 0° → X=17, Y=-17.5 (rotated left)
         - Base 90° → X=25, Y=0 (forward - maximum reach)
-        - Base 180° → X=17, Y=15.7 (rotated right)
+        - Base 180° → X=17, Y=17.5 (rotated right)
         
         Base servo rotates around Z axis, changing both X and Y.
         Height fixed at 40cm.
+        
+        angles[0] = base servo angle (physical channel mapping)
         """
-        # Base servo angle (0-180°)
+        # Base servo angle (0-180°) - this is angles[0]
         base_servo_angle = angles[0]
         
         # Base angle in radians (90° = 0 rad = forward)
         base_rad = (base_servo_angle - 90.0) * math.pi / 180.0
         
-        # Correct: X = 17 + 8*cos²(base_rad) [gives 25 at 90°, 17 at 0°/180° ✓]
-        # Y = 15.7*sin(base_rad) [gives ±15.7 at 0°/180°, 0 at 90° ✓]
+        # X = 17 + 8*cos²(base_rad) [gives 25 at 90°, 17 at 0°/180° ✓]
+        # Y = 17.5*sin(base_rad) [gives ±17.5 at 0°/180°, 0 at 90° ✓]
         
         x = 17.0 + 8.0 * math.cos(base_rad)**2
-        y = 15.7 * math.sin(base_rad)
+        y = 17.5 * math.sin(base_rad)
         
         # Height is fixed (only calibrated at all 90°)
         z = 40.0
@@ -118,11 +120,11 @@ def test_kinematics():
         
         # Expected values from measurements
         if base_angle == 0:
-            print(f"  Expected: X=17, Y≈-15.7, Z=40 ✓")
+            print(f"  Expected: X=17, Y≈-17.5, Z=40 ✓")
         elif base_angle == 90:
             print(f"  Expected: X=25, Y=0, Z=40 ✓")
         elif base_angle == 180:
-            print(f"  Expected: X=17, Y≈15.7, Z=40 ✓")
+            print(f"  Expected: X=17, Y≈17.5, Z=40 ✓")
         print()
     
     print("=" * 70)

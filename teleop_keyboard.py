@@ -96,16 +96,15 @@ class TeleopNode(Node):
     
     def get_xyz_position(self):
         """Calculate current XYZ position from motor angles."""
-        # Convert motor channel order to logical joint order
-        # Motor channels: [gripper, wrist_roll, wrist_pitch, elbow, shoulder, base]
-        # Logical order:  [base, shoulder, elbow, wrist_pitch, wrist_roll, gripper]
+        # Motor channels: [gripper(0), wrist_roll(1), wrist_pitch(2), elbow(3), shoulder(4), base(5)]
+        # FK expects: [base, shoulder, elbow, wrist_pitch, wrist_roll, gripper]
         logical_angles = [
-            self.angles[5],  # Base
-            self.angles[4],  # Shoulder
-            self.angles[3],  # Elbow
-            self.angles[2],  # Wrist Pitch
-            self.angles[1],  # Wrist Roll
-            self.angles[0],  # Gripper
+            self.angles[5],  # Base (channel 5) → index 0
+            self.angles[4],  # Shoulder (channel 4) → index 1
+            self.angles[3],  # Elbow (channel 3) → index 2
+            self.angles[2],  # Wrist Pitch (channel 2) → index 3
+            self.angles[1],  # Wrist Roll (channel 1) → index 4
+            self.angles[0],  # Gripper (channel 0) → index 5
         ]
         
         # Use forward kinematics to get XYZ
