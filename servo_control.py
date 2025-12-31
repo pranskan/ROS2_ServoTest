@@ -27,6 +27,17 @@ class RoboticArmNode(Node):
         self.NUM_SERVOS = 6
         self.servo_names = ["Gripper", "Wrist Roll", "Wrist Pitch", "Elbow", "Shoulder", "Base"]
         
+        # Servo angle limits (min, max) - UPDATE THESE BASED ON CALIBRATION
+        # Default: full range, but adjust per servo based on physical limits
+        self.servo_limits = [
+            (0, 180),    # 0: Gripper
+            (0, 180),    # 1: Wrist Roll
+            (45, 135),   # 2: Wrist Pitch - LIKELY LIMITED (~90° range)
+            (45, 135),   # 3: Elbow - LIKELY LIMITED (~90° range)
+            (45, 135),   # 4: Shoulder - LIKELY LIMITED (~90° range)
+            (45, 135),   # 5: Base - LIKELY LIMITED (~90° range)
+        ]
+        
         # Current state
         self.current_angles = [90.0] * self.NUM_SERVOS
         self.initialized = False
@@ -87,8 +98,9 @@ class RoboticArmNode(Node):
         return 0x0CCC, 0x1999  # Same for all servos
     
     def set_servo_angle(self, channel, angle):
-        """Set servo angle (0-180 degrees)."""
-        angle = max(0, min(180, angle))
+        """Set servo angle with per-servo limits."""
+        min_limit, max_limit = self.servo_limits[channel]
+        angle = max(min_limit, min(max_limit, angle))
         min_pulse, max_pulse = self.get_pulse_range(channel)
         pulse = int(min_pulse + (angle / 180.0) * (max_pulse - min_pulse))
         self.pca.channels[channel].duty_cycle = pulse
