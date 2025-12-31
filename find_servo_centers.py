@@ -9,7 +9,7 @@ from std_msgs.msg import Float32MultiArray
 import time
 
 
-class ServoCenter Finder(Node):
+class ServoCenterFinder(Node):
     def __init__(self):
         super().__init__('servo_center_finder')
         self.arm_pub = self.create_publisher(Float32MultiArray, 'arm_command', 10)
@@ -122,7 +122,7 @@ class ServoCenter Finder(Node):
 
 def main():
     rclpy.init()
-    node = ServoCenter Finder()
+    node = ServoCenterFinder()
     
     try:
         results = node.run_calibration()

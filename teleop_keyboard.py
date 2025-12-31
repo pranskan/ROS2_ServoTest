@@ -23,6 +23,16 @@ MOTOR_NAMES = [
     "Base"          # 5
 ]
 
+# Servo angle limits (min, max)
+SERVO_LIMITS = [
+    (0, 180),       # 0: Gripper - 180° servo
+    (0, 180),       # 1: Wrist Roll - 180° servo
+    (0, 270),       # 2: Wrist Pitch - 270° servo
+    (0, 270),       # 3: Elbow - 270° servo
+    (0, 270),       # 4: Shoulder - 270° servo
+    (0, 270),       # 5: Base - 270° servo
+]
+
 # Key mappings
 KEY_HELP = """
 ====================================================
@@ -30,12 +40,12 @@ KEYBOARD TELEOPERATION CONTROLS
 ====================================================
 
 Motor Selection (press number):
-  0 - Gripper
-  1 - Wrist Roll
-  2 - Wrist Pitch
-  3 - Elbow
-  4 - Shoulder
-  5 - Base
+  0 - Gripper (0-180°)
+  1 - Wrist Roll (0-180°)
+  2 - Wrist Pitch (0-270°)
+  3 - Elbow (0-270°)
+  4 - Shoulder (0-270°)
+  5 - Base (0-270°)
 
 Movement (after selecting motor):
   + / = : Increase angle by 5°
@@ -44,7 +54,7 @@ Movement (after selecting motor):
   [ : Decrease angle by 1°
 
 Quick Commands:
-  c : Center all (90°)
+  c : Center all
   s : Show status
   h : Show help
 
@@ -75,8 +85,8 @@ class TeleopNode(Node):
             l4=15.0
         )
         
-        # Current motor angles
-        self.angles = [90.0] * 6  # All start at 90°
+        # Current motor angles - start at center positions
+        self.angles = [90.0, 90.0, 135.0, 135.0, 135.0, 135.0]
         
         # Current selected motor
         self.selected_motor = 5  # Default to base
@@ -103,7 +113,8 @@ class TeleopNode(Node):
     
     def move_motor(self, motor, delta):
         """Move a motor by delta degrees."""
-        self.angles[motor] = max(0.0, min(180.0, self.angles[motor] + delta))
+        min_limit, max_limit = SERVO_LIMITS[motor]
+        self.angles[motor] = max(min_limit, min(max_limit, self.angles[motor] + delta))
         self.publish_state()
         
         # Get and display XYZ position
@@ -111,13 +122,13 @@ class TeleopNode(Node):
         print(f"{MOTOR_NAMES[motor]}: {self.angles[motor]:.1f}° | XYZ: ({xyz['x']:.2f}, {xyz['y']:.2f}, {xyz['z']:.2f}) cm")
     
     def center_all(self):
-        """Move all motors to 90°."""
-        self.angles = [90.0] * 6
+        """Move all motors to center position."""
+        self.angles = [90.0, 90.0, 135.0, 135.0, 135.0, 135.0]
         self.publish_state()
         
         # Display XYZ position
         xyz = self.get_xyz_position()
-        self.get_logger().info('Centered all motors to 90°')
+        self.get_logger().info('Centered all motors')
         print(f"Position: ({xyz['x']:.2f}, {xyz['y']:.2f}, {xyz['z']:.2f}) cm")
     
     def show_status(self):
@@ -133,8 +144,9 @@ class TeleopNode(Node):
         print(f"  Z: {xyz['z']:7.2f} cm")
         print(f"\nJoint Angles:")
         for i, (name, angle) in enumerate(zip(MOTOR_NAMES, self.angles)):
+            min_lim, max_lim = SERVO_LIMITS[i]
             marker = " <--" if i == self.selected_motor else ""
-            print(f"  {i}: {name:15s} = {angle:6.1f}°{marker}")
+            print(f"  {i}: {name:15s} = {angle:6.1f}° ({min_lim}-{max_lim}°){marker}")
         print(f"\nIncrement: {self.increment}°")
         print("=" * 60 + "\n")
 
@@ -173,14 +185,15 @@ def main():
             key = get_key()
             
             # Quit
-            if key == 'q' or key == '\x03':  # \x03 is Ctrl+C
+            if key == 'q' or key == '\x03':
                 break
             
             # Select motor
             elif key in '012345':
                 node.selected_motor = int(key)
                 xyz = node.get_xyz_position()
-                print(f"Selected: {MOTOR_NAMES[node.selected_motor]} | Position: ({xyz['x']:.2f}, {xyz['y']:.2f}, {xyz['z']:.2f}) cm")
+                min_lim, max_lim = SERVO_LIMITS[node.selected_motor]
+                print(f"Selected: {MOTOR_NAMES[node.selected_motor]} ({min_lim}-{max_lim}°) | Position: ({xyz['x']:.2f}, {xyz['y']:.2f}, {xyz['z']:.2f}) cm")
             
             # Increase angle
             elif key in ['+', '=', ']']:
