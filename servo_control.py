@@ -116,13 +116,15 @@ class RoboticArmNode(Node):
         min_angle, max_angle, is_270 = self.servo_specs[channel]
         
         if is_270:
-            # 270° servo: typically 0.5ms to 2.5ms pulse width
-            # Maps to 0x0666 to 0x1999 in PCA9685 12-bit values
-            return 0x0666, 0x1999
+            # 270° servo: 500µs to 2500µs pulse width
+            # 500µs / 4.88µs per step = 102 (0x0066)
+            # 2500µs / 4.88µs per step = 512 (0x0200)
+            return 0x0066, 0x0200
         else:
-            # 180° servo: typically 1ms to 2ms pulse width
-            # Maps to 0x0CCC to 0x1999 in PCA9685 12-bit values
-            return 0x0CCC, 0x1999
+            # 180° servo: typically 1000µs to 2000µs pulse width
+            # 1000µs / 4.88µs per step = 205 (0x00CD)
+            # 2000µs / 4.88µs per step = 410 (0x019A)
+            return 0x00CD, 0x019A
     
     def set_servo_angle(self, channel, angle):
         """Set servo angle with per-servo limits and type."""
