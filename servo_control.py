@@ -2,7 +2,7 @@
 ROS2 Robotic Arm Control Node
 ------------------------------
 Controls 6 servo motors for a robotic arm using PCA9685 PWM driver.
-Includes safe initialization.
+Includes safe initialization and forward kinematics.
 """
 
 import rclpy
@@ -12,6 +12,7 @@ from adafruit_pca9685 import PCA9685
 from board import SCL, SDA
 import busio
 import time
+from kinematics_dh import ArmKinematicsDH
 
 
 class RoboticArmNode(Node):
@@ -27,6 +28,14 @@ class RoboticArmNode(Node):
         self.NUM_SERVOS = 6
         self.servo_names = ["Gripper", "Wrist Roll", "Wrist Pitch", "Elbow", "Shoulder", "Base"]
         
+        # Initialize kinematics with measured dimensions
+        self.arm_kinematics = ArmKinematicsDH(
+            base_height=10.5,
+            l2=12.9,
+            l3=11.0,
+            l4=15.0
+        )
+        
         # Servo angle limits (min, max) - UPDATE THESE BASED ON CALIBRATION
         # Default: full range, but adjust per servo based on physical limits
         self.servo_limits = [
@@ -40,6 +49,7 @@ class RoboticArmNode(Node):
         
         # Current state
         self.current_angles = [90.0] * self.NUM_SERVOS
+        self.current_xyz = self.get_xyz_position(self.current_angles)
         self.initialized = False
         
         # Movement parameters
@@ -83,6 +93,9 @@ class RoboticArmNode(Node):
             self.current_angles[channel] = 90.0
             self.get_logger().info(f'    ✓ {self.servo_names[channel]} centered')
         
+        # Calculate initial position
+        self.current_xyz = self.get_xyz_position(self.current_angles)
+        
         # Ready!
         self.initialized = True
         
@@ -91,6 +104,7 @@ class RoboticArmNode(Node):
         self.get_logger().info('=' * 60)
         self.get_logger().info('Topics: /arm_command, /arm_demo')
         self.get_logger().info(f'Movement: {self.movement_speed}°/step @ {self.step_delay*1000:.0f}ms')
+        self.get_logger().info(f'Position: X={self.current_xyz["x"]:.2f}, Y={self.current_xyz["y"]:.2f}, Z={self.current_xyz["z"]:.2f} cm')
         self.get_logger().info('=' * 60)
     
     def get_pulse_range(self, channel):
@@ -104,6 +118,11 @@ class RoboticArmNode(Node):
         min_pulse, max_pulse = self.get_pulse_range(channel)
         pulse = int(min_pulse + (angle / 180.0) * (max_pulse - min_pulse))
         self.pca.channels[channel].duty_cycle = pulse
+    
+    def get_xyz_position(self, angles):
+        """Calculate XYZ position from joint angles using forward kinematics."""
+        pos = self.arm_kinematics.forward_kinematics(angles)
+        return pos
     
     def smooth_move_to_angles(self, target_angles):
         """Smoothly interpolate from current to target angles."""
@@ -126,6 +145,7 @@ class RoboticArmNode(Node):
                 time.sleep(self.step_delay)
         
         self.current_angles = list(target_angles)
+        self.current_xyz = self.get_xyz_position(self.current_angles)
     
     def arm_callback(self, msg):
         """Direct motor angle control."""
@@ -139,10 +159,11 @@ class RoboticArmNode(Node):
         
         self.smooth_move_to_angles(list(msg.data))
         
-        # Log servo angles
+        # Log servo angles AND XYZ position
         self.get_logger().info(
             f'Angles: [{msg.data[0]:.1f}° {msg.data[1]:.1f}° {msg.data[2]:.1f}° '
-            f'{msg.data[3]:.1f}° {msg.data[4]:.1f}° {msg.data[5]:.1f}°]'
+            f'{msg.data[3]:.1f}° {msg.data[4]:.1f}° {msg.data[5]:.1f}°] | '
+            f'XYZ: ({self.current_xyz["x"]:.2f}, {self.current_xyz["y"]:.2f}, {self.current_xyz["z"]:.2f}) cm'
         )
     
     def demo_callback(self, msg):

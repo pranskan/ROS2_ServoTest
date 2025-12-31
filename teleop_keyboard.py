@@ -1,7 +1,7 @@
 """
 Keyboard Teleoperation for Robotic Arm
 --------------------------------------
-Control arm with keyboard.
+Control arm with keyboard and display real-time XYZ position.
 Press keys to move motors, Ctrl+C to exit.
 """
 import sys
@@ -11,6 +11,7 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float32MultiArray
 import threading
+from kinematics_dh import ArmKinematicsDH
 
 # Motor names
 MOTOR_NAMES = [
@@ -66,6 +67,14 @@ class TeleopNode(Node):
         # Publisher
         self.arm_pub = self.create_publisher(Float32MultiArray, 'arm_command', 10)
         
+        # Initialize kinematics
+        self.arm_kinematics = ArmKinematicsDH(
+            base_height=10.5,
+            l2=12.9,
+            l3=11.0,
+            l4=15.0
+        )
+        
         # Current motor angles
         self.angles = [90.0] * 6  # All start at 90°
         
@@ -87,23 +96,41 @@ class TeleopNode(Node):
         msg.data = self.angles
         self.arm_pub.publish(msg)
     
+    def get_xyz_position(self):
+        """Calculate current XYZ position from motor angles."""
+        pos = self.arm_kinematics.forward_kinematics(self.angles)
+        return pos
+    
     def move_motor(self, motor, delta):
         """Move a motor by delta degrees."""
         self.angles[motor] = max(0.0, min(180.0, self.angles[motor] + delta))
         self.publish_state()
-        print(f"{MOTOR_NAMES[motor]}: {self.angles[motor]:.1f}°")
+        
+        # Get and display XYZ position
+        xyz = self.get_xyz_position()
+        print(f"{MOTOR_NAMES[motor]}: {self.angles[motor]:.1f}° | XYZ: ({xyz['x']:.2f}, {xyz['y']:.2f}, {xyz['z']:.2f}) cm")
     
     def center_all(self):
         """Move all motors to 90°."""
         self.angles = [90.0] * 6
         self.publish_state()
+        
+        # Display XYZ position
+        xyz = self.get_xyz_position()
         self.get_logger().info('Centered all motors to 90°')
+        print(f"Position: ({xyz['x']:.2f}, {xyz['y']:.2f}, {xyz['z']:.2f}) cm")
     
     def show_status(self):
-        """Print current status."""
+        """Print current status with XYZ position."""
+        xyz = self.get_xyz_position()
+        
         print("\n" + "=" * 60)
         print("CURRENT STATUS")
         print("=" * 60)
+        print(f"\nEnd-Effector Position (XYZ):")
+        print(f"  X: {xyz['x']:7.2f} cm")
+        print(f"  Y: {xyz['y']:7.2f} cm")
+        print(f"  Z: {xyz['z']:7.2f} cm")
         print(f"\nJoint Angles:")
         for i, (name, angle) in enumerate(zip(MOTOR_NAMES, self.angles)):
             marker = " <--" if i == self.selected_motor else ""
@@ -134,9 +161,11 @@ def main():
     spin_thread = threading.Thread(target=rclpy.spin, args=(node,), daemon=True)
     spin_thread.start()
     
-    # Display initial status
+    # Display initial position
+    xyz = node.get_xyz_position()
     print("Ready! Select a motor (0-5) and use +/- to move it.")
     print(f"Currently controlling: {MOTOR_NAMES[node.selected_motor]}")
+    print(f"Current position: ({xyz['x']:.2f}, {xyz['y']:.2f}, {xyz['z']:.2f}) cm")
     print("Press 'h' for help, 'q' to quit.\n")
     
     try:
@@ -150,7 +179,8 @@ def main():
             # Select motor
             elif key in '012345':
                 node.selected_motor = int(key)
-                print(f"Selected: {MOTOR_NAMES[node.selected_motor]}")
+                xyz = node.get_xyz_position()
+                print(f"Selected: {MOTOR_NAMES[node.selected_motor]} | Position: ({xyz['x']:.2f}, {xyz['y']:.2f}, {xyz['z']:.2f}) cm")
             
             # Increase angle
             elif key in ['+', '=', ']']:
