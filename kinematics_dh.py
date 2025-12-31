@@ -1,6 +1,6 @@
 """
 Forward Kinematics using DH Parameters
-Standard robotics method for calculating end-effector position
+Accounts for both 180° and 270° servo motors
 """
 
 import numpy as np
@@ -28,10 +28,7 @@ class ArmKinematicsDH:
     def dh_matrix(self, a, alpha, d, theta):
         """
         Create homogeneous transformation matrix from DH parameters.
-        
-        Standard DH convention.
         """
-        # Convert to radians
         alpha_rad = math.radians(alpha)
         theta_rad = math.radians(theta)
         
@@ -40,7 +37,6 @@ class ArmKinematicsDH:
         cos_alpha = math.cos(alpha_rad)
         sin_alpha = math.sin(alpha_rad)
         
-        # Standard DH transformation matrix
         T = np.array([
             [cos_theta, -sin_theta*cos_alpha, sin_theta*sin_alpha, a*cos_theta],
             [sin_theta, cos_theta*cos_alpha, -cos_theta*sin_alpha, a*sin_theta],
@@ -55,16 +51,17 @@ class ArmKinematicsDH:
         Calculate end-effector position from joint angles.
         
         angles: [gripper(0), wrist_roll(1), wrist_pitch(2), elbow(3), shoulder(4), base(5)]
-                (in degrees, 0-180)
+        
+        Servo types:
+        - Gripper (0): 180° servo, centered at 90°
+        - Wrist Roll (1): 180° servo, centered at 90°
+        - Wrist Pitch (2): 270° servo, centered at 135°
+        - Elbow (3): 270° servo, centered at 135°
+        - Shoulder (4): 270° servo, centered at 135°
+        - Base (5): 270° servo, centered at 135°
         
         Returns: {'x': x_cm, 'y': y_cm, 'z': z_cm}
-        
-        At all 90°, the arm should be:
-        - X = l2 + l3 + l4 = 12.9 + 11.0 + 15.0 = 38.9 cm (forward)
-        - Y = 0 (centered)
-        - Z = base_height = 10.5 cm (table height)
         """
-        # Extract angles
         gripper = angles[0]
         wrist_roll = angles[1]
         wrist_pitch = angles[2]
@@ -72,38 +69,31 @@ class ArmKinematicsDH:
         shoulder = angles[4]
         base = angles[5]
         
-        # Start with identity matrix
         T = np.eye(4)
         
-        # Joint 1: Base rotation (rotates around Z axis)
-        # This changes X and Y based on base angle
-        # At 90°, should point forward (positive X)
-        # At 0°, should point left (negative Y)
-        # At 180°, should point right (positive Y)
-        base_angle = base - 90.0  # Center at 90°
+        # Joint 1: Base rotation (270° servo, center at 135°)
+        # At 135°, should point forward (positive X)
+        # At 45°, should point left (negative Y)
+        # At 225°, should point right (positive Y)
+        base_angle = base - 135.0
         T1 = self.dh_matrix(a=0, alpha=0, d=self.base_height, theta=base_angle)
         T = T @ T1
         
-        # Joint 2: Shoulder pitch
-        # At 90°, arm is horizontal (no Z change)
-        # At 0°, arm points down
-        # At 180°, arm points up
-        shoulder_angle = shoulder - 90.0
+        # Joint 2: Shoulder pitch (270° servo, center at 135°)
+        # At 135°, arm is horizontal
+        shoulder_angle = shoulder - 135.0
         T2 = self.dh_matrix(a=self.l2, alpha=0, d=0, theta=shoulder_angle)
         T = T @ T2
         
-        # Joint 3: Elbow pitch
-        elbow_angle = elbow - 90.0
+        # Joint 3: Elbow pitch (270° servo, center at 135°)
+        elbow_angle = elbow - 135.0
         T3 = self.dh_matrix(a=self.l3, alpha=0, d=0, theta=elbow_angle)
         T = T @ T3
         
-        # Joint 4: Wrist pitch
-        wrist_pitch_angle = wrist_pitch - 90.0
+        # Joint 4: Wrist pitch (270° servo, center at 135°)
+        wrist_pitch_angle = wrist_pitch - 135.0
         T4 = self.dh_matrix(a=self.l4, alpha=0, d=0, theta=wrist_pitch_angle)
         T = T @ T4
-        
-        # Joint 5: Wrist roll (doesn't affect XYZ, only rotation)
-        # Joint 6: Gripper (doesn't affect position, only opening)
         
         # Extract position
         x = T[0, 3]
@@ -113,22 +103,16 @@ class ArmKinematicsDH:
         return {'x': x, 'y': y, 'z': z}
     
     def inverse_kinematics(self, x, y, z):
-        """
-        Solve inverse kinematics (XYZ → angles).
-        
-        This is complex for 6-DOF arms.
-        For now, returns None (use forward kinematics only).
-        """
+        """Solve inverse kinematics - not implemented."""
         return None
 
 
 def test_kinematics():
     """Test DH kinematics."""
     print("=" * 70)
-    print("DH FORWARD KINEMATICS TEST")
+    print("DH FORWARD KINEMATICS TEST - 270° SERVOS")
     print("=" * 70)
     
-    # Initialize with your measurements
     arm = ArmKinematicsDH(
         base_height=10.5,
         l2=12.9,
@@ -136,17 +120,16 @@ def test_kinematics():
         l4=15.0
     )
     
-    # Test some positions
     test_cases = [
-        ([90, 90, 90, 90, 90, 90], "All at 90° (neutral - arm forward)"),
-        ([90, 90, 90, 90, 45, 90], "Shoulder at 45° (arm up)"),
-        ([90, 90, 90, 90, 135, 90], "Shoulder at 135° (arm down)"),
-        ([90, 90, 90, 90, 90, 0], "Base at 0° (arm left)"),
-        ([90, 90, 90, 90, 90, 180], "Base at 180° (arm right)"),
+        ([90, 90, 135, 135, 135, 135], "All centered (gripper 90°, rest 135°)"),
+        ([90, 90, 135, 135, 45, 135], "Shoulder at 45° (arm up)"),
+        ([90, 90, 135, 135, 225, 135], "Shoulder at 225° (arm down)"),
+        ([90, 90, 135, 135, 135, 45], "Base at 45° (arm left)"),
+        ([90, 90, 135, 135, 135, 225], "Base at 225° (arm right)"),
     ]
     
     print("\nForward Kinematics Results:\n")
-    print("Expected at 90°: X=38.9 cm, Y=0 cm, Z=10.5 cm\n")
+    print("Expected at center (135°): X≈38.9 cm, Y=0 cm, Z=10.5 cm\n")
     
     for angles, description in test_cases:
         pos = arm.forward_kinematics(angles)
