@@ -121,7 +121,7 @@ def test_kinematics():
     print("=" * 70)
     print("DH FORWARD KINEMATICS TEST - WITH TRANSFORMATION")
     print("=" * 70)
-    
+
     arm = ArmKinematicsDH(
         base_height=10.5,
         l2=12.9,
