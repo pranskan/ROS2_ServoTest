@@ -8,8 +8,6 @@ Simple ROS2 control for 6-DOF robotic arm using PCA9685 on Raspberry Pi 5.
 ROS2_ServoTest/
 ├── servo_control.py       # Main ROS2 node (with safe startup)
 ├── teleop_keyboard.py     # Keyboard control
-├── path_executor.py       # Path planning and execution
-├── kinematics.py          # Inverse kinematics
 └── README.md             # This file
 ```
 
@@ -127,23 +125,6 @@ python3 teleop_keyboard.py
 - `f/n/m`: Fast/Normal/Slow mode
 - `q`: Quit
 
-### Execute Planned Path
-
-```bash
-cd ~/ROS2_ServoTest
-source /opt/ros/jazzy/setup.bash
-source ~/ros2_servo_venv/bin/activate
-
-# Default path
-python3 path_executor.py
-
-# Custom path
-python3 path_executor.py --start 0 -31 29 --end -31 11 26
-
-# Smoother motion
-python3 path_executor.py --start 0 -31 29 --end -31 11 26 --max-change 3
-```
-
 ### ROS2 Commands
 
 ```bash
@@ -151,11 +132,6 @@ source /opt/ros/jazzy/setup.bash
 
 # Move to center
 ros2 topic pub --once /arm_demo std_msgs/msg/String "data: 'center'"
-
-# Move to XYZ position
-ros2 topic pub --once /arm_xyz geometry_msgs/msg/Point "x: 20.0
-y: 0.0
-z: 30.0"
 
 # Direct motor control
 ros2 topic pub --once /arm_command std_msgs/msg/Float32MultiArray \
@@ -168,25 +144,8 @@ ros2 topic pub --once /arm_command std_msgs/msg/Float32MultiArray \
 |-------|------|-------------|
 | `/arm_command` | Float32MultiArray | Direct angles [6 values, 0-180°] |
 | `/arm_demo` | String | Commands: 'center' |
-| `/arm_xyz` | Point | XYZ position (cm) |
 
 ## Configuration
-
-### Adjust Robot Dimensions
-
-Edit `kinematics.py`:
-
-```python
-self.L1 = 10.0  # Base height
-self.L2 = 15.0  # Upper arm
-self.L3 = 15.0  # Forearm
-self.L4 = 10.0  # Gripper
-```
-
-Test:
-```bash
-python3 kinematics.py
-```
 
 ### Adjust Movement Speed
 
@@ -219,15 +178,6 @@ sudo usermod -a -G i2c $USER
 # Log out and log back in
 ```
 
-### Position Unreachable
-
-Check workspace limits:
-```bash
-python3 kinematics.py
-```
-
-Adjust target position to be within limits.
-
 ## Quick Reference
 
 ```bash
@@ -240,7 +190,7 @@ source ~/ros2_servo_venv/bin/activate
 python3 servo_control.py     # Wait for "READY!"
 
 # Terminal 2:
-python3 teleop_keyboard.py   # Or path_executor.py
+python3 teleop_keyboard.py
 ```
 
 ## License
