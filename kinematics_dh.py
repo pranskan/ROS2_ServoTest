@@ -24,40 +24,29 @@ class ArmKinematicsDH:
         self.l2 = l2
         self.l3 = l3
         self.l4 = l4
-        
-        # DH Parameters table
-        # [a, alpha, d, theta_offset]
-        self.dh_table = [
-            [0,    0,    base_height, 0],      # Joint 1: Base
-            [0,   90,    0,           90],     # Joint 2: Shoulder
-            [l2,   0,    0,           0],      # Joint 3: Upper arm
-            [0,   90,    0,           0],      # Joint 4: Elbow
-            [l3,   0,    0,           0],      # Joint 5: Forearm
-            [0,   90,    0,           0],      # Joint 6: Wrist
-            [l4,   0,    0,           0],      # End effector
-        ]
     
     def dh_matrix(self, a, alpha, d, theta):
         """
         Create homogeneous transformation matrix from DH parameters.
         
-        T = Tz(d) * Rx(alpha) * Tx(a) * Rz(theta)
+        Standard DH convention.
         """
         # Convert to radians
         alpha_rad = math.radians(alpha)
         theta_rad = math.radians(theta)
         
-        # Build transformation matrix
+        cos_theta = math.cos(theta_rad)
+        sin_theta = math.sin(theta_rad)
+        cos_alpha = math.cos(alpha_rad)
+        sin_alpha = math.sin(alpha_rad)
+        
+        # Standard DH transformation matrix
         T = np.array([
-            [math.cos(theta_rad), -math.sin(theta_rad)*math.cos(alpha_rad), 
-             math.sin(theta_rad)*math.sin(alpha_rad), a*math.cos(theta_rad)],
-            
-            [math.sin(theta_rad), math.cos(theta_rad)*math.cos(alpha_rad),
-             -math.cos(theta_rad)*math.sin(alpha_rad), a*math.sin(theta_rad)],
-            
-            [0, math.sin(alpha_rad), math.cos(alpha_rad), d],
+            [cos_theta, -sin_theta*cos_alpha, sin_theta*sin_alpha, a*cos_theta],
+            [sin_theta, cos_theta*cos_alpha, -cos_theta*sin_alpha, a*sin_theta],
+            [0, sin_alpha, cos_alpha, d],
             [0, 0, 0, 1]
-        ])
+        ], dtype=float)
         
         return T
     
@@ -65,39 +54,61 @@ class ArmKinematicsDH:
         """
         Calculate end-effector position from joint angles.
         
-        angles: [base, shoulder, elbow, wrist_pitch, wrist_roll, gripper]
+        angles: [gripper(0), wrist_roll(1), wrist_pitch(2), elbow(3), shoulder(4), base(5)]
                 (in degrees, 0-180)
         
         Returns: {'x': x_cm, 'y': y_cm, 'z': z_cm}
+        
+        At all 90°, the arm should be:
+        - X = l2 + l3 + l4 = 12.9 + 11.0 + 15.0 = 38.9 cm (forward)
+        - Y = 0 (centered)
+        - Z = base_height = 10.5 cm (table height)
         """
-        # Convert servo angles to DH angles
-        # Servo 90° = joint center position
-        dh_angles = [
-            angles[5],           # Base
-            angles[4] - 90,      # Shoulder (offset from 90°)
-            angles[3] - 90,      # Elbow
-            angles[2] - 90,      # Wrist pitch
-            angles[1],           # Wrist roll
-            angles[0],           # Gripper (not used in FK)
-        ]
+        # Extract angles
+        gripper = angles[0]
+        wrist_roll = angles[1]
+        wrist_pitch = angles[2]
+        elbow = angles[3]
+        shoulder = angles[4]
+        base = angles[5]
         
-        # Calculate transformation matrix for each joint
-        T = np.eye(4)  # Start with identity matrix
+        # Start with identity matrix
+        T = np.eye(4)
         
-        for i in range(len(dh_angles)):
-            a, alpha, d, theta_offset = self.dh_table[i]
-            theta = dh_angles[i] + theta_offset
-            
-            # Get DH matrix for this joint
-            T_i = self.dh_matrix(a, alpha, d, theta)
-            
-            # Multiply matrices (accumulate transformations)
-            T = T @ T_i
+        # Joint 1: Base rotation (rotates around Z axis)
+        # This changes X and Y based on base angle
+        # At 90°, should point forward (positive X)
+        # At 0°, should point left (negative Y)
+        # At 180°, should point right (positive Y)
+        base_angle = base - 90.0  # Center at 90°
+        T1 = self.dh_matrix(a=0, alpha=0, d=self.base_height, theta=base_angle)
+        T = T @ T1
         
-        # Extract position from final transformation matrix
-        x = T[0, 3]  # X position
-        y = T[1, 3]  # Y position
-        z = T[2, 3]  # Z position
+        # Joint 2: Shoulder pitch
+        # At 90°, arm is horizontal (no Z change)
+        # At 0°, arm points down
+        # At 180°, arm points up
+        shoulder_angle = shoulder - 90.0
+        T2 = self.dh_matrix(a=self.l2, alpha=0, d=0, theta=shoulder_angle)
+        T = T @ T2
+        
+        # Joint 3: Elbow pitch
+        elbow_angle = elbow - 90.0
+        T3 = self.dh_matrix(a=self.l3, alpha=0, d=0, theta=elbow_angle)
+        T = T @ T3
+        
+        # Joint 4: Wrist pitch
+        wrist_pitch_angle = wrist_pitch - 90.0
+        T4 = self.dh_matrix(a=self.l4, alpha=0, d=0, theta=wrist_pitch_angle)
+        T = T @ T4
+        
+        # Joint 5: Wrist roll (doesn't affect XYZ, only rotation)
+        # Joint 6: Gripper (doesn't affect position, only opening)
+        
+        # Extract position
+        x = T[0, 3]
+        y = T[1, 3]
+        z = T[2, 3]
         
         return {'x': x, 'y': y, 'z': z}
     
@@ -108,8 +119,6 @@ class ArmKinematicsDH:
         This is complex for 6-DOF arms.
         For now, returns None (use forward kinematics only).
         """
-        # IK for 6-DOF is very complex
-        # Would need numerical solver or analytical solution
         return None
 
 
@@ -121,21 +130,23 @@ def test_kinematics():
     
     # Initialize with your measurements
     arm = ArmKinematicsDH(
-        base_height=10.5,  # Update with your measurement
-        l2=12.9,           # Update with your measurement
-        l3=11.0,           # Update with your measurement
-        l4=15.0            # Update with your measurement
+        base_height=10.5,
+        l2=12.9,
+        l3=11.0,
+        l4=15.0
     )
     
     # Test some positions
     test_cases = [
-        ([90, 90, 90, 90, 90, 90], "All at 90° (neutral)"),
-        ([0, 90, 90, 90, 90, 90], "Base rotated left"),
-        ([180, 90, 90, 90, 90, 90], "Base rotated right"),
-        ([90, 45, 90, 90, 90, 90], "Shoulder pitched up"),
+        ([90, 90, 90, 90, 90, 90], "All at 90° (neutral - arm forward)"),
+        ([90, 90, 90, 90, 45, 90], "Shoulder at 45° (arm up)"),
+        ([90, 90, 90, 90, 135, 90], "Shoulder at 135° (arm down)"),
+        ([90, 90, 90, 90, 90, 0], "Base at 0° (arm left)"),
+        ([90, 90, 90, 90, 90, 180], "Base at 180° (arm right)"),
     ]
     
     print("\nForward Kinematics Results:\n")
+    print("Expected at 90°: X=38.9 cm, Y=0 cm, Z=10.5 cm\n")
     
     for angles, description in test_cases:
         pos = arm.forward_kinematics(angles)
