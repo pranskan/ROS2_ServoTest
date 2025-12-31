@@ -102,22 +102,12 @@ class ArmKinematicsDH:
         z_dh = T[2, 3]
         
         # Apply coordinate transformation to match your physical arm
-        # Current DH: (38.90, 0.00, 10.50) → Desired: (27, 0, 40)
-        # Transform: Rotate 90° around Y axis, then scale and offset
+        # Home position: DH (38.9, 0, 10.5) → Desired (27, 0, 40)
+        # When base rotates, X and Y change but Z should stay constant
         
-        # Transformation matrix: Rotate 90° around Y, then adjust
-        # X_dh → Z_new, Z_dh → X_new, Y stays Y
-        x_new = z_dh + 16.5  # 10.5 + 16.5 = 27 (at home position)
-        y_new = y_dh          # Y stays the same
-        z_new = x_dh - 1.1    # 38.9 - 1.1 = 37.8, but we want 40...
-        
-        # Actually, let's use a proper transformation
-        # For home position: (38.9, 0, 10.5) → (27, 0, 40)
-        # This looks like: X becomes Z, Z becomes X, with offsets
-        
-        x_new = z_dh + 16.5   # Z_dh (10.5) + 16.5 = 27
-        y_new = y_dh          # Y stays 0
-        z_new = x_dh + 1.1    # X_dh (38.9) + 1.1 = 40
+        x_new = x_dh - 11.9  # 38.9 - 11.9 = 27 at home
+        y_new = y_dh         # Y stays the same
+        z_new = z_dh + 29.5  # 10.5 + 29.5 = 40, stays constant when base rotates
         
         return {'x': x_new, 'y': y_new, 'z': z_new}
     
