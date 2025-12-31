@@ -16,6 +16,21 @@ class ServoLimitsFinder(Node):
         time.sleep(2)
         self.get_logger().info('Ready to find servo limits')
     
+    def move_servo_and_hold(self, servo_channel, angle):
+        """Move servo to angle and hold it there."""
+        angles = [90.0] * 6
+        angles[servo_channel] = angle
+        msg = Float32MultiArray()
+        msg.data = angles
+        
+        # Publish multiple times to ensure it gets there
+        for _ in range(10):
+            self.arm_pub.publish(msg)
+            time.sleep(0.1)
+        
+        # Keep publishing to hold position while user responds
+        return angles, msg
+    
     def test_servo(self, servo_channel, servo_name):
         """Test a single servo to find its limits."""
         print("\n" + "=" * 70)
@@ -27,63 +42,102 @@ class ServoLimitsFinder(Node):
         # Test minimum
         print("\nTesting MINIMUM angle...")
         print("Trying 0°...")
-        angles = [90.0] * 6
-        angles[servo_channel] = 0
-        msg = Float32MultiArray()
-        msg.data = angles
-        for _ in range(5):
-            self.arm_pub.publish(msg)
-            time.sleep(0.1)
-        time.sleep(1)
+        angles, msg = self.move_servo_and_hold(servo_channel, 0)
         
-        response = input("Does servo move to 0°? (y/n): ").lower()
-        if response == 'y':
-            limits['min'] = 0
-            print("✓ Can reach 0°")
-        else:
-            print("✗ Cannot reach 0° - testing higher angles")
+        # Keep holding position while waiting for response
+        response = None
+        while response is None:
+            response_str = input("Does servo move to 0°? (y/n): ").lower()
+            if response_str == 'y':
+                response = True
+                limits['min'] = 0
+                print("✓ Can reach 0°")
+            elif response_str == 'n':
+                response = False
+                print("✗ Cannot reach 0° - testing higher angles")
+            else:
+                print("Please enter 'y' or 'n'")
+                response = None
+            
+            # Keep publishing to hold position
+            for _ in range(5):
+                self.arm_pub.publish(msg)
+                time.sleep(0.1)
+        
+        # Test higher angles if 0° didn't work
+        if not limits['min'] == 0:
             for test_angle in [20, 30, 40, 45, 50]:
-                angles[servo_channel] = test_angle
-                msg.data = angles
-                for _ in range(5):
-                    self.arm_pub.publish(msg)
-                    time.sleep(0.1)
-                time.sleep(1)
+                angles, msg = self.move_servo_and_hold(servo_channel, test_angle)
                 
-                response = input(f"Does servo move to {test_angle}°? (y/n): ").lower()
-                if response == 'y':
-                    limits['min'] = test_angle
-                    print(f"✓ Minimum angle is {test_angle}°")
+                response = None
+                while response is None:
+                    response_str = input(f"Does servo move to {test_angle}°? (y/n): ").lower()
+                    if response_str == 'y':
+                        response = True
+                        limits['min'] = test_angle
+                        print(f"✓ Minimum angle is {test_angle}°")
+                    elif response_str == 'n':
+                        response = False
+                    else:
+                        print("Please enter 'y' or 'n'")
+                        response = None
+                    
+                    # Keep publishing to hold position
+                    for _ in range(5):
+                        self.arm_pub.publish(msg)
+                        time.sleep(0.1)
+                
+                if limits['min'] != 0:
                     break
         
         # Test maximum
         print("\nTesting MAXIMUM angle...")
         print("Trying 180°...")
-        angles[servo_channel] = 180
-        msg.data = angles
-        for _ in range(5):
-            self.arm_pub.publish(msg)
-            time.sleep(0.1)
-        time.sleep(1)
+        angles, msg = self.move_servo_and_hold(servo_channel, 180)
         
-        response = input("Does servo move to 180°? (y/n): ").lower()
-        if response == 'y':
-            limits['max'] = 180
-            print("✓ Can reach 180°")
-        else:
-            print("✗ Cannot reach 180° - testing lower angles")
+        response = None
+        while response is None:
+            response_str = input("Does servo move to 180°? (y/n): ").lower()
+            if response_str == 'y':
+                response = True
+                limits['max'] = 180
+                print("✓ Can reach 180°")
+            elif response_str == 'n':
+                response = False
+                print("✗ Cannot reach 180° - testing lower angles")
+            else:
+                print("Please enter 'y' or 'n'")
+                response = None
+            
+            # Keep publishing to hold position
+            for _ in range(5):
+                self.arm_pub.publish(msg)
+                time.sleep(0.1)
+        
+        # Test lower angles if 180° didn't work
+        if not limits['max'] == 180:
             for test_angle in [160, 150, 140, 135, 130]:
-                angles[servo_channel] = test_angle
-                msg.data = angles
-                for _ in range(5):
-                    self.arm_pub.publish(msg)
-                    time.sleep(0.1)
-                time.sleep(1)
+                angles, msg = self.move_servo_and_hold(servo_channel, test_angle)
                 
-                response = input(f"Does servo move to {test_angle}°? (y/n): ").lower()
-                if response == 'y':
-                    limits['max'] = test_angle
-                    print(f"✓ Maximum angle is {test_angle}°")
+                response = None
+                while response is None:
+                    response_str = input(f"Does servo move to {test_angle}°? (y/n): ").lower()
+                    if response_str == 'y':
+                        response = True
+                        limits['max'] = test_angle
+                        print(f"✓ Maximum angle is {test_angle}°")
+                    elif response_str == 'n':
+                        response = False
+                    else:
+                        print("Please enter 'y' or 'n'")
+                        response = None
+                    
+                    # Keep publishing to hold position
+                    for _ in range(5):
+                        self.arm_pub.publish(msg)
+                        time.sleep(0.1)
+                
+                if limits['max'] != 180:
                     break
         
         return limits
