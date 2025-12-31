@@ -2,18 +2,16 @@
 ROS2 Robotic Arm Control Node
 ------------------------------
 Controls 6 servo motors for a robotic arm using PCA9685 PWM driver.
-Includes safe initialization and path planning.
+Includes safe initialization.
 """
 
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float32MultiArray, String
-from geometry_msgs.msg import Point
 from adafruit_pca9685 import PCA9685
 from board import SCL, SDA
 import busio
 import time
-from kinematics import ArmKinematics
 
 
 class RoboticArmNode(Node):
@@ -28,9 +26,6 @@ class RoboticArmNode(Node):
         
         self.NUM_SERVOS = 6
         self.servo_names = ["Gripper", "Wrist Roll", "Wrist Pitch", "Elbow", "Shoulder", "Base"]
-        
-        # Initialize kinematics
-        self.arm_kinematics = ArmKinematics()
         
         # Current state
         self.current_angles = [90.0] * self.NUM_SERVOS
@@ -56,9 +51,7 @@ class RoboticArmNode(Node):
             Float32MultiArray, 'arm_command', self.arm_callback, 10)
         self.demo_subscription = self.create_subscription(
             String, 'arm_demo', self.demo_callback, 10)
-        self.xyz_subscription = self.create_subscription(
-            Point, 'arm_xyz', self.xyz_callback, 10)
-        #jhgjduoidgoiudg
+        
         # Wait for topics to settle
         self.get_logger().info('Step 2: Waiting for ROS2 topics to settle...')
         time.sleep(1.0)
@@ -79,18 +72,14 @@ class RoboticArmNode(Node):
             self.current_angles[channel] = 90.0
             self.get_logger().info(f'    ✓ {self.servo_names[channel]} centered')
         
-        # Calculate initial position
-        self.current_xyz = self.get_current_xyz_position(self.current_angles)
-        
         # Ready!
         self.initialized = True
         
         self.get_logger().info('=' * 60)
         self.get_logger().info('✓ READY!')
         self.get_logger().info('=' * 60)
-        self.get_logger().info('Topics: /arm_command, /arm_demo, /arm_xyz')
+        self.get_logger().info('Topics: /arm_command, /arm_demo')
         self.get_logger().info(f'Movement: {self.movement_speed}°/step @ {self.step_delay*1000:.0f}ms')
-        self.get_logger().info(f'Position: ({self.current_xyz[0]:.2f}, {self.current_xyz[1]:.2f}, {self.current_xyz[2]:.2f}) cm')
         self.get_logger().info('=' * 60)
     
     def get_pulse_range(self, channel):
@@ -103,15 +92,6 @@ class RoboticArmNode(Node):
         min_pulse, max_pulse = self.get_pulse_range(channel)
         pulse = int(min_pulse + (angle / 180.0) * (max_pulse - min_pulse))
         self.pca.channels[channel].duty_cycle = pulse
-    
-    def get_current_xyz_position(self, angles):
-        """Calculate XYZ position from joint angles."""
-        logical_angles = [
-            angles[5], angles[4], angles[3],  # Base, Shoulder, Elbow
-            angles[2], angles[1], angles[0]   # Wrist Pitch, Wrist Roll, Gripper
-        ]
-        position = self.arm_kinematics.forward_kinematics(logical_angles)
-        return (position['x'], position['y'], position['z'])
     
     def smooth_move_to_angles(self, target_angles):
         """Smoothly interpolate from current to target angles."""
@@ -135,22 +115,6 @@ class RoboticArmNode(Node):
         
         self.current_angles = list(target_angles)
     
-    def move_to_waypoint(self, x, y, z):
-        """Move to XYZ position."""
-        logical_angles = self.arm_kinematics.inverse_kinematics(x, y, z)
-        
-        if logical_angles is None:
-            return False
-        
-        # Map logical to physical channels
-        target_angles = [
-            logical_angles[5], logical_angles[4], logical_angles[3],
-            logical_angles[2], logical_angles[1], logical_angles[0]
-        ]
-        
-        self.smooth_move_to_angles(target_angles)
-        return True
-    
     def arm_callback(self, msg):
         """Direct motor angle control."""
         if not self.initialized:
@@ -162,13 +126,11 @@ class RoboticArmNode(Node):
             return
         
         self.smooth_move_to_angles(list(msg.data))
-        self.current_xyz = self.get_current_xyz_position(list(msg.data))
         
-        # Log both servo angles AND XYZ position
+        # Log servo angles
         self.get_logger().info(
             f'Angles: [{msg.data[0]:.1f}° {msg.data[1]:.1f}° {msg.data[2]:.1f}° '
-            f'{msg.data[3]:.1f}° {msg.data[4]:.1f}° {msg.data[5]:.1f}°] | '
-            f'XYZ: ({self.current_xyz[0]:.2f}, {self.current_xyz[1]:.2f}, {self.current_xyz[2]:.2f}) cm'
+            f'{msg.data[3]:.1f}° {msg.data[4]:.1f}° {msg.data[5]:.1f}°]'
         )
     
     def demo_callback(self, msg):
@@ -180,25 +142,6 @@ class RoboticArmNode(Node):
             self.get_logger().info('Centering all motors...')
             self.smooth_move_to_angles([90.0] * self.NUM_SERVOS)
             self.get_logger().info('✓ Centered')
-    
-    def xyz_callback(self, msg):
-        """Move to XYZ position."""
-        if not self.initialized:
-            self.get_logger().warn('Ignoring XYZ command - still initializing')
-            return
-        
-        target_xyz = (msg.x, msg.y, msg.z)
-        
-        self.get_logger().info(f'Moving to ({target_xyz[0]:.2f}, '
-                              f'{target_xyz[1]:.2f}, {target_xyz[2]:.2f}) cm')
-        
-        success = self.move_to_waypoint(*target_xyz)
-        
-        if success:
-            self.current_xyz = target_xyz
-            self.get_logger().info('✓ Position reached')
-        else:
-            self.get_logger().error('❌ Position unreachable')
     
     def disable_all_servos(self):
         """Disable all servos on shutdown."""
