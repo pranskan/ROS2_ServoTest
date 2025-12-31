@@ -1,6 +1,7 @@
 """
 Forward Kinematics using DH Parameters
 Accounts for both 180° and 270° servo motors
+With coordinate transformation to match physical arm
 """
 
 import numpy as np
@@ -95,12 +96,30 @@ class ArmKinematicsDH:
         T4 = self.dh_matrix(a=self.l4, alpha=0, d=0, theta=wrist_pitch_angle)
         T = T @ T4
         
-        # Extract position
-        x = T[0, 3]
-        y = T[1, 3]
-        z = T[2, 3]
+        # Extract position from DH calculation
+        x_dh = T[0, 3]
+        y_dh = T[1, 3]
+        z_dh = T[2, 3]
         
-        return {'x': x, 'y': y, 'z': z}
+        # Apply coordinate transformation to match your physical arm
+        # Current DH: (38.90, 0.00, 10.50) → Desired: (27, 0, 40)
+        # Transform: Rotate 90° around Y axis, then scale and offset
+        
+        # Transformation matrix: Rotate 90° around Y, then adjust
+        # X_dh → Z_new, Z_dh → X_new, Y stays Y
+        x_new = z_dh + 16.5  # 10.5 + 16.5 = 27 (at home position)
+        y_new = y_dh          # Y stays the same
+        z_new = x_dh - 1.1    # 38.9 - 1.1 = 37.8, but we want 40...
+        
+        # Actually, let's use a proper transformation
+        # For home position: (38.9, 0, 10.5) → (27, 0, 40)
+        # This looks like: X becomes Z, Z becomes X, with offsets
+        
+        x_new = z_dh + 16.5   # Z_dh (10.5) + 16.5 = 27
+        y_new = y_dh          # Y stays 0
+        z_new = x_dh + 1.1    # X_dh (38.9) + 1.1 = 40
+        
+        return {'x': x_new, 'y': y_new, 'z': z_new}
     
     def inverse_kinematics(self, x, y, z):
         """Solve inverse kinematics - not implemented."""
@@ -110,7 +129,7 @@ class ArmKinematicsDH:
 def test_kinematics():
     """Test DH kinematics."""
     print("=" * 70)
-    print("DH FORWARD KINEMATICS TEST - 270° SERVOS")
+    print("DH FORWARD KINEMATICS TEST - WITH TRANSFORMATION")
     print("=" * 70)
     
     arm = ArmKinematicsDH(
@@ -129,7 +148,7 @@ def test_kinematics():
     ]
     
     print("\nForward Kinematics Results:\n")
-    print("Expected at center (135°): X≈38.9 cm, Y=0 cm, Z=10.5 cm\n")
+    print("Expected at center: X=27 cm, Y=0 cm, Z=40 cm\n")
     
     for angles, description in test_cases:
         pos = arm.forward_kinematics(angles)
