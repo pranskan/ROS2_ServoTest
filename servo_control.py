@@ -36,15 +36,15 @@ class RoboticArmNode(Node):
             l4=15.0
         )
         
-        # Servo angle limits (min, max) - UPDATE THESE BASED ON CALIBRATION
-        # Default: full range, but adjust per servo based on physical limits
-        self.servo_limits = [
-            (0, 180),    # 0: Gripper: Gripper - 180° servo
-            (0, 180),    # 1: Wrist Rollrist Roll - 180° servo
-            (45, 135),   # 2: Wrist Pitch - LIKELY LIMITED (~90° range)
-            (45, 135),   # 3: Elbow - LIKELY LIMITED (~90° range)
-            (45, 135),   # 4: Shoulder - LIKELY LIMITED (~90° range)
-            (45, 135),   # 5: Base - LIKELY LIMITED (~90° range)
+        # Servo specifications
+        # Channel: (min_angle, max_angle, is_270_degree)
+        self.servo_specs = [
+            (0, 180, False),      # 0: Gripper - 180° servo
+            (0, 180, False),      # 1: Wrist Roll - 180° servo
+            (0, 270, True),       # 2: Wrist Pitch - 270° servo
+            (0, 270, True),       # 3: Elbow - 270° servo
+            (0, 270, True),       # 4: Shoulder - 270° servo
+            (0, 270, True),       # 5: Base - 270° servo
         ]
         
         # Current state
@@ -108,103 +108,103 @@ class RoboticArmNode(Node):
         self.get_logger().info('=' * 60)
         self.get_logger().info('Topics: /arm_command, /arm_demo')
         self.get_logger().info(f'Movement: {self.movement_speed}°/step @ {self.step_delay*1000:.0f}ms')
-        self.get_logger().info(f'Position: X={self.current_xyz["x"]:.2f}, Y={self.current_xyz["y"]:.2f}, Z={self.current_xyz["z"]:.2f} cm')ed on servo type."""
-        self.get_logger().info('=' * 60)ecs[channel]
-        
+        self.get_logger().info(f'Position: X={self.current_xyz["x"]:.2f}, Y={self.current_xyz["y"]:.2f}, Z={self.current_xyz["z"]:.2f} cm')
+        self.get_logger().info('=' * 60)
+    
     def get_pulse_range(self, channel):
-        """Get PWM pulse range for servo channel."""ulse width
-        return 0x0CCC, 0x1999  # Same for all servosvalues
+        """Get PWM pulse range for servo channel based on servo type."""
+        min_angle, max_angle, is_270 = self.servo_specs[channel]
+        
+        if is_270:
+            # 270° servo: typically 0.5ms to 2.5ms pulse width
+            # Maps to 0x0666 to 0x1999 in PCA9685 12-bit values
+            return 0x0666, 0x1999
+        else:
+            # 180° servo: typically 1ms to 2ms pulse width
+            # Maps to 0x0CCC to 0x1999 in PCA9685 12-bit values
+            return 0x0CCC, 0x1999
     
     def set_servo_angle(self, channel, angle):
-        """Set servo angle with per-servo limits."""
-        min_limit, max_limit = self.servo_limits[channel]bit values
-        angle = max(min_limit, min(max_limit, angle))        return 0x0CCC, 0x1999
+        """Set servo angle with per-servo limits and type."""
+        min_angle, max_angle, is_270 = self.servo_specs[channel]
+        
+        # Clamp to servo's physical limits
+        angle = max(min_angle, min(max_angle, angle))
+        
+        # Get pulse range for this servo type
         min_pulse, max_pulse = self.get_pulse_range(channel)
-        pulse = int(min_pulse + (angle / 180.0) * (max_pulse - min_pulse))
+        
+        # Map angle to pulse (0 to max_angle → min_pulse to max_pulse)
+        pulse = int(min_pulse + (angle / max_angle) * (max_pulse - min_pulse))
         self.pca.channels[channel].duty_cycle = pulse
-     max_angle, is_270 = self.servo_specs[channel]
-    def get_xyz_position(self, angles):    
+    
+    def get_xyz_position(self, angles):
         """Calculate XYZ position from joint angles using forward kinematics."""
         pos = self.arm_kinematics.forward_kinematics(angles)
         return pos
     
-    def smooth_move_to_angles(self, target_angles):min_pulse, max_pulse = self.get_pulse_range(channel)
+    def smooth_move_to_angles(self, target_angles):
         """Smoothly interpolate from current to target angles."""
-        max_diff = max(abs(target_angles[i] - self.current_angles[i]) e to pulse (0 to max_angle → min_pulse to max_pulse)
-                      for i in range(self.NUM_SERVOS))pulse = int(min_pulse + (angle / max_angle) * (max_pulse - min_pulse))
+        max_diff = max(abs(target_angles[i] - self.current_angles[i]) 
+                      for i in range(self.NUM_SERVOS))
         
         if max_diff == 0:
             return
-        n from joint angles using forward kinematics."""
-        num_steps = max(1, int(max_diff / self.movement_speed))cs(angles)
+        
+        num_steps = max(1, int(max_diff / self.movement_speed))
         
         for step in range(num_steps + 1):
             t = step / num_steps
-            for channel in range(self.NUM_SERVOS):moothly interpolate from current to target angles."""
-                angle = self.current_angles[channel] + t * (t_angles[i] - self.current_angles[i]) 
-                    target_angles[channel] - self.current_angles[channel])UM_SERVOS))
+            for channel in range(self.NUM_SERVOS):
+                angle = self.current_angles[channel] + t * (
+                    target_angles[channel] - self.current_angles[channel])
                 self.set_servo_angle(channel, angle)
             
             if step < num_steps:
-                time.sleep(self.step_delay)    
-        ax_diff / self.movement_speed))
+                time.sleep(self.step_delay)
+        
         self.current_angles = list(target_angles)
-        self.current_xyz = self.get_xyz_position(self.current_angles)eps + 1):
+        self.current_xyz = self.get_xyz_position(self.current_angles)
     
-    def arm_callback(self, msg):annel in range(self.NUM_SERVOS):
-        """Direct motor angle control."""        angle = self.current_angles[channel] + t * (
-        if not self.initialized: self.current_angles[channel])
+    def arm_callback(self, msg):
+        """Direct motor angle control."""
+        if not self.initialized:
             self.get_logger().warn('Ignoring command - still initializing')
             return
-            if step < num_steps:
+        
         if len(msg.data) != self.NUM_SERVOS:
             self.get_logger().error(f'Expected {self.NUM_SERVOS} angles')
-            returnngles)
-        .get_xyz_position(self.current_angles)
+            return
+        
         self.smooth_move_to_angles(list(msg.data))
         
         # Log servo angles AND XYZ position
-        self.get_logger().info(f not self.initialized:
-            f'Angles: [{msg.data[0]:.1f}° {msg.data[1]:.1f}° {msg.data[2]:.1f}° '        self.get_logger().warn('Ignoring command - still initializing')
+        self.get_logger().info(
+            f'Angles: [{msg.data[0]:.1f}° {msg.data[1]:.1f}° {msg.data[2]:.1f}° '
             f'{msg.data[3]:.1f}° {msg.data[4]:.1f}° {msg.data[5]:.1f}°] | '
             f'XYZ: ({self.current_xyz["x"]:.2f}, {self.current_xyz["y"]:.2f}, {self.current_xyz["z"]:.2f}) cm'
-        ).NUM_SERVOS:
-    et_logger().error(f'Expected {self.NUM_SERVOS} angles')
-    def demo_callback(self, msg):    return
+        )
+    
+    def demo_callback(self, msg):
         """Demo commands."""
         if not self.initialized:
             return
         
-        if msg.data == 'center':    self.get_logger().info(
-            self.get_logger().info('Centering all motors...')0]:.1f}° {msg.data[1]:.1f}° {msg.data[2]:.1f}° '
-            self.smooth_move_to_angles([90.0] * self.NUM_SERVOS):.1f}° {msg.data[5]:.1f}°] | '
-            self.get_logger().info('✓ Centered')}, {self.current_xyz["y"]:.2f}, {self.current_xyz["z"]:.2f}) cm'
+        if msg.data == 'center':
+            self.get_logger().info('Centering all motors...')
+            self.smooth_move_to_angles([90.0, 90.0, 135.0, 135.0, 135.0, 135.0])
+            self.get_logger().info('✓ Centered')
     
     def disable_all_servos(self):
-        """Disable all servos on shutdown."""    def demo_callback(self, msg):
-        for channel in range(self.NUM_SERVOS):        """Demo commands."""
-            self.pca.channels[channel].duty_cycle = 0initialized:
+        """Disable all servos on shutdown."""
+        for channel in range(self.NUM_SERVOS):
+            self.pca.channels[channel].duty_cycle = 0
         self.get_logger().info('All servos disabled')
 
-    if msg.data == 'center':
-def main(args=None):    self.get_logger().info('Centering all motors...')
-    rclpy.init(args=args)move_to_angles([90.0] * self.NUM_SERVOS)
-    node = RoboticArmNode().info('✓ Centered')
-    
-    try:ble_all_servos(self):
-        rclpy.spin(node)shutdown."""
-    except KeyboardInterrupt:e(self.NUM_SERVOS):
-        passnnels[channel].duty_cycle = 0
-    finally:        self.get_logger().info('All servos disabled')
-        node.disable_all_servos()
-        node.destroy_node()
-        rclpy.shutdown()rgs=None):
+
+def main(args=None):
     rclpy.init(args=args)
-
-
-
-
-    main()if __name__ == '__main__':    node = RoboticArmNode()
+    node = RoboticArmNode()
     
     try:
         rclpy.spin(node)
