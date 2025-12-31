@@ -112,19 +112,22 @@ class RoboticArmNode(Node):
         self.get_logger().info('=' * 60)
     
     def get_pulse_range(self, channel):
-        """Get PWM pulse range for servo channel based on servo type."""
+        """Get PWM pulse range for servo channel based on servo type.
+        
+        PCA9685 duty_cycle expects 16-bit values (0-65535)
+        At 50Hz: 20ms period = 65535 max counts
+        1µs = 65535 / 20000 = 3.28 counts
+        """
         min_angle, max_angle, is_270 = self.servo_specs[channel]
         
         if is_270:
             # 270° servo: 500µs to 2500µs pulse width
-            # 500µs / 4.88µs per step = 102 (0x0066)
-            # 2500µs / 4.88µs per step = 512 (0x0200)
-            return 0x0066, 0x0200
+            # 500µs * 3.28 = 1640, 2500µs * 3.28 = 8200
+            return 1640, 8200
         else:
-            # 180° servo: typically 1000µs to 2000µs pulse width
-            # 1000µs / 4.88µs per step = 205 (0x00CD)
-            # 2000µs / 4.88µs per step = 410 (0x019A)
-            return 0x00CD, 0x019A
+            # 180° servo: 1000µs to 2000µs pulse width
+            # 1000µs * 3.28 = 3280, 2000µs * 3.28 = 6560
+            return 3280, 6560
     
     def set_servo_angle(self, channel, angle):
         """Set servo angle with per-servo limits and type."""
@@ -137,7 +140,13 @@ class RoboticArmNode(Node):
         min_pulse, max_pulse = self.get_pulse_range(channel)
         
         # Map angle to pulse (0 to max_angle → min_pulse to max_pulse)
+        # max_angle is 180 or 270, so we need to map correctly
         pulse = int(min_pulse + (angle / max_angle) * (max_pulse - min_pulse))
+        
+        # Debug: log first servo
+        if channel == 0:
+            self.get_logger().debug(f'Ch{channel}: angle={angle:.1f}°, pulse={pulse} ({pulse/65535*100:.1f}%)')
+        
         self.pca.channels[channel].duty_cycle = pulse
     
     def get_xyz_position(self, angles):

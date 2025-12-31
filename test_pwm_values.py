@@ -1,25 +1,29 @@
 """
 Test PWM pulse values for servos
-Correct values based on actual servo specs
+Correct values based on actual servo specs and 16-bit duty cycle
 """
 
-# PCA9685 timing: 20ms period / 4096 steps = 4.88µs per step
+# PCA9685 timing: 50Hz = 20ms period
+# 16-bit duty cycle (0-65535)
+# 1µs = 65535 / 20000 = 3.28 counts
+
+MICROSEC_TO_COUNTS = 65535 / 20000  # 3.276
 
 # 270° servo: 500µs to 2500µs
-MIN_270 = 0x0066  # 500µs ÷ 4.88µs = 102
-MAX_270 = 0x0200  # 2500µs ÷ 4.88µs = 512
+MIN_270 = int(500 * MICROSEC_TO_COUNTS)    # 1638
+MAX_270 = int(2500 * MICROSEC_TO_COUNTS)   # 8191
 
 # 180° servo: 1000µs to 2000µs
-MIN_180 = 0x00CD  # 1000µs ÷ 4.88µs = 205
-MAX_180 = 0x019A  # 2000µs ÷ 4.88µs = 410
+MIN_180 = int(1000 * MICROSEC_TO_COUNTS)   # 3276
+MAX_180 = int(2000 * MICROSEC_TO_COUNTS)   # 6553
 
 def usec_to_pwm(microseconds):
     """Convert microseconds to PWM value."""
-    return int(microseconds / 4.88)
+    return int(microseconds * MICROSEC_TO_COUNTS)
 
 def pwm_to_usec(pwm_value):
     """Convert PWM value to microseconds."""
-    return pwm_value * 4.88
+    return pwm_value / MICROSEC_TO_COUNTS
 
 def test_pulse_mapping(servo_type, angles_to_test):
     """Test pulse values for given angles."""
@@ -34,22 +38,22 @@ def test_pulse_mapping(servo_type, angles_to_test):
     
     print(f"\n{servo_type}° Servo Pulse Mapping")
     print(f"Range: {min_usec}µs to {max_usec}µs")
-    print(f"PWM:   0x{min_pulse:04X} ({min_pulse}) to 0x{max_pulse:04X} ({max_pulse})")
-    print(f"\nAngle → PWM (dec) | PWM (hex) | µs    | PWM% ")
-    print("-" * 55)
+    print(f"PWM:   {min_pulse} to {max_pulse}")
+    print(f"\nAngle → PWM Count | µs    | PWM% ")
+    print("-" * 50)
     
     for angle in angles_to_test:
         pulse = int(min_pulse + (angle / max_angle) * (max_pulse - min_pulse))
         usec = pwm_to_usec(pulse)
-        pwm_percent = (pulse / 4096) * 100
-        print(f"{angle:3.0f}° → {pulse:5d} | 0x{pulse:04X} | {usec:6.0f} | {pwm_percent:5.1f}%")
+        pwm_percent = (pulse / 65535) * 100
+        print(f"{angle:3.0f}° → {pulse:5d} | {usec:6.0f} | {pwm_percent:5.1f}%")
 
-print("=" * 55)
-print("PCA9685 PWM CALCULATION")
-print("=" * 55)
+print("=" * 60)
+print("PCA9685 PWM CALCULATION (16-bit duty cycle)")
+print("=" * 60)
 print(f"Frequency: 50Hz (20ms period)")
-print(f"Resolution: 12-bit (4096 steps)")
-print(f"Step size: 20ms / 4096 = 4.88µs\n")
+print(f"Resolution: 16-bit (0-65535 counts)")
+print(f"Conversion: 1µs = {MICROSEC_TO_COUNTS:.2f} counts\n")
 
 # Test 270° servo
 test_pulse_mapping(270, [0, 45, 90, 135, 180, 225, 270])
@@ -57,13 +61,13 @@ test_pulse_mapping(270, [0, 45, 90, 135, 180, 225, 270])
 # Test 180° servo  
 test_pulse_mapping(180, [0, 45, 90, 135, 180])
 
-print("\n" + "=" * 55)
-print("SERVO SPECIFICATIONS")
-print("=" * 55)
-print("180° servo (MG996R):")
-print("  Range: 1000µs to 2000µs")
-print("  PWM: 0x00CD to 0x019A")
-print("\n270° servo (DS3218):")
-print("  Range: 500µs to 2500µs")
-print("  PWM: 0x0066 to 0x0200")
-print("=" * 55)
+print("\n" + "=" * 60)
+print("SERVO SPECIFICATIONS (16-bit counts)")
+print("=" * 60)
+print(f"180° servo (MG996R):")
+print(f"  Range: 1000µs to 2000µs")
+print(f"  PWM: {MIN_180} to {MAX_180}")
+print(f"\n270° servo (DS3218):")
+print(f"  Range: 500µs to 2500µs")
+print(f"  PWM: {MIN_270} to {MAX_270}")
+print("=" * 60)
