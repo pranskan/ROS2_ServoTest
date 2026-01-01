@@ -8,6 +8,7 @@ Simple ROS2 control for 6-DOF robotic arm using PCA9685 on Raspberry Pi 5.
 ROS2_ServoTest/
 ├── servo_control.py           # Main ROS2 node (with safe startup)
 ├── teleop_keyboard.py         # Keyboard control (MAIN METHOD)
+├── config.py                  # Configuration file for initial angles
 └── README.md                  # This file
 ```
 
@@ -133,7 +134,7 @@ python3 teleop_keyboard.py
 - `+/-`: Move by 5°
 - `]/[`: Move by 1°
 - `c`: Center all motors
-- `s`: Show status with XYZ position
+- `s`: Show status
 - `f/n/m`: Fast (10°) / Normal (5°) / Slow (1°) mode
 - `h`: Show help
 - `q`: Quit
@@ -167,6 +168,14 @@ Edit `servo_control.py`:
 ```python
 self.movement_speed = 2.0  # degrees/step (lower = smoother)
 self.step_delay = 0.02     # seconds (lower = faster)
+```
+
+### Set Initial Angles
+
+Edit `config.py`:
+
+```python
+initial_angles = [90, 90, 90, 90, 90, 90]  # Set initial angles for each servo
 ```
 
 ## Troubleshooting

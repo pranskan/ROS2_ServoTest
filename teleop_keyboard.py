@@ -12,6 +12,7 @@ from rclpy.node import Node
 from std_msgs.msg import Float32MultiArray
 import threading
 from config import SERVO_LIMITS, MOTOR_NAMES, INITIAL_ANGLES, PULSE_RANGES, SERVO_SPECS
+from kinematics_dh import ArmKinematicsDH
 
 # Motor names
 MOTOR_NAMES = MOTOR_NAMES  # Override if needed, but use config
@@ -63,7 +64,10 @@ class TeleopNode(Node):
         # Publisher
         self.arm_pub = self.create_publisher(Float32MultiArray, 'arm_command', 10)
         
-        # Current motor angles - start at 0° for homing
+        # Initialize kinematics
+        self.arm_kinematics = ArmKinematicsDH()
+        
+        # Current motor angles - start at initial angles
         self.angles = INITIAL_ANGLES.copy()
         
         # Current selected motor
@@ -84,6 +88,10 @@ class TeleopNode(Node):
         msg.data = self.angles
         self.arm_pub.publish(msg)
     
+    def get_xyz_position(self):
+        """Calculate current XYZ position from motor angles."""
+        return self.arm_kinematics.forward_kinematics(self.angles)
+    
     def move_motor(self, motor, delta):
         """Move a motor by delta degrees."""
         min_limit, max_limit = SERVO_LIMITS[motor]
@@ -95,8 +103,9 @@ class TeleopNode(Node):
         min_pulse, max_pulse = PULSE_RANGES[1 if is_270 else 0]
         pulse = int(min_pulse + (self.angles[motor] / max_angle) * (max_pulse - min_pulse))
         
-        # Display angle and PWM
-        print(f"{MOTOR_NAMES[motor]}: {self.angles[motor]:.1f}° | PWM: {pulse} ({pulse/65535*100:.1f}%)")
+        # Get and display XYZ position
+        xyz = self.get_xyz_position()
+        print(f"{MOTOR_NAMES[motor]}: {self.angles[motor]:.1f}° | PWM: {pulse} ({pulse/65535*100:.1f}%) | XYZ: ({xyz['x']:.2f}, {xyz['y']:.2f}, {xyz['z']:.2f}) cm")
     
     def center_all(self):
         """Move all motors to center position (initial angles for homing)."""
@@ -104,13 +113,20 @@ class TeleopNode(Node):
         self.publish_state()
         
         self.get_logger().info('Centered all motors')
-        print("All motors centered to initial positions")
+        xyz = self.get_xyz_position()
+        print(f"All motors centered | XYZ: ({xyz['x']:.2f}, {xyz['y']:.2f}, {xyz['z']:.2f}) cm")
     
     def show_status(self):
         """Print current status."""
+        xyz = self.get_xyz_position()
+        
         print("\n" + "=" * 60)
         print("CURRENT STATUS")
         print("=" * 60)
+        print(f"\nEnd-Effector Position (XYZ):")
+        print(f"  X: {xyz['x']:7.2f} cm")
+        print(f"  Y: {xyz['y']:7.2f} cm")
+        print(f"  Z: {xyz['z']:7.2f} cm")
         print(f"\nJoint Angles:")
         for i, (name, angle) in enumerate(zip(MOTOR_NAMES, self.angles)):
             min_lim, max_lim = SERVO_LIMITS[i]

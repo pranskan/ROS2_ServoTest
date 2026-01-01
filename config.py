@@ -26,16 +26,16 @@ SERVO_LIMITS = [
 # Pulse ranges: (min_pulse, max_pulse) for each servo type
 PULSE_RANGES = [
     (3932, 7864),  # 180° servo: 1000-2000µs
-    (1966, 8737),  # 270° servo: 500-1833µs
+    (2321, 8360),  # 270° servo: 500-1833µs
 ]
 
 # Initial angles (set each motor separately for homing)
 INITIAL_ANGLES = [
-    0.0,  # 0: Gripper
-    0.0,  # 1: Wrist Roll
-    0.0,  # 2: Wrist Pitch
-    0.0,  # 3: Elbow
-    0.0,  # 4: Shoulder
+    90.0,  # 0: Gripper
+    90.0,  # 1: Wrist Roll
+    90.0,  # 2: Wrist Pitch
+    90.0,  # 3: Elbow
+    90.0,  # 4: Shoulder
     90.0,  # 5: Base
 ]
 

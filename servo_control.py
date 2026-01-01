@@ -13,6 +13,7 @@ from board import SCL, SDA
 import busio
 import time
 from config import SERVO_SPECS, MOTOR_NAMES, MOVEMENT_SPEED, STEP_DELAY, INITIAL_ANGLES, PULSE_RANGES
+from kinematics_dh import ArmKinematicsDH
 
 
 class RoboticArmNode(Node):
@@ -31,8 +32,12 @@ class RoboticArmNode(Node):
         # Servo specifications
         self.servo_specs = SERVO_SPECS
         
+        # Initialize kinematics
+        self.arm_kinematics = ArmKinematicsDH()
+        
         # Current state
         self.current_angles = INITIAL_ANGLES.copy()
+        self.current_xyz = self.arm_kinematics.forward_kinematics(self.current_angles)
         self.initialized = False
         
         # Movement parameters
@@ -77,7 +82,10 @@ class RoboticArmNode(Node):
                 time.sleep(0.025)
             
             self.current_angles[channel] = center_angle
+            self.current_xyz = self.arm_kinematics.forward_kinematics(self.current_angles)
             self.get_logger().info(f'    ✓ {self.servo_names[channel]} centered at {center_angle}°')
+        
+        self.current_xyz = self.arm_kinematics.forward_kinematics(self.current_angles)
         
         # Ready!
         self.initialized = True
@@ -136,6 +144,7 @@ class RoboticArmNode(Node):
                 time.sleep(self.step_delay)
         
         self.current_angles = list(target_angles)
+        self.current_xyz = self.arm_kinematics.forward_kinematics(self.current_angles)
     
     def arm_callback(self, msg):
         """Direct motor angle control."""
@@ -150,9 +159,16 @@ class RoboticArmNode(Node):
         self.smooth_move_to_angles(list(msg.data))
         
         # Log servo angles AND XYZ position
+        # Reorder angles from [Gripper(0), Wrist Roll(1), Wrist Pitch(2), Elbow(3), Shoulder(4), Base(5)]
+        # to [Base(5), Shoulder(4), Elbow(3), Wrist Pitch(2), Wrist Roll(1), Gripper(0)]
+        reordered_angles = [self.current_angles[5], self.current_angles[4], self.current_angles[3], 
+                           self.current_angles[2], self.current_angles[1], self.current_angles[0]]
+        self.current_xyz = self.arm_kinematics.forward_kinematics(reordered_angles)
+        angles_str = ' | '.join([f'{self.servo_names[i]}: {msg.data[i]:.1f}°' 
+                                 for i in range(self.NUM_SERVOS)])
         self.get_logger().info(
-            f'Angles: [{msg.data[0]:.1f}° {msg.data[1]:.1f}° {msg.data[2]:.1f}° '
-            f'{msg.data[3]:.1f}° {msg.data[4]:.1f}° {msg.data[5]:.1f}°]'
+            f'{angles_str} | '
+            f'XYZ: ({self.current_xyz["x"]:.2f}, {self.current_xyz["y"]:.2f}, {self.current_xyz["z"]:.2f}) mm'
         )
     
     def demo_callback(self, msg):
@@ -164,6 +180,7 @@ class RoboticArmNode(Node):
             self.get_logger().info('Centering all motors...')
             center_angles = INITIAL_ANGLES.copy()
             self.smooth_move_to_angles(center_angles)
+            self.current_xyz = self.arm_kinematics.forward_kinematics(self.current_angles)
             self.get_logger().info('✓ Centered')
     
     def disable_all_servos(self):
