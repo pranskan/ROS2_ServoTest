@@ -8,9 +8,6 @@ Simple ROS2 control for 6-DOF robotic arm using PCA9685 on Raspberry Pi 5.
 ROS2_ServoTest/
 ├── servo_control.py           # Main ROS2 node (with safe startup)
 ├── teleop_keyboard.py         # Keyboard control (MAIN METHOD)
-├── kinematics_dh.py           # Forward kinematics (DH parameters)
-├── find_servo_centers.py      # Calibration for 270° servos
-├── calibrate_servo_limits.py  # Test servo ranges
 └── README.md                  # This file
 ```
 
@@ -19,8 +16,7 @@ ROS2_ServoTest/
 - Raspberry Pi 5 (Ubuntu 24.04)
 - PCA9685 PWM Driver
 - Servos:
-  - 2x MG996R (180° servos): Gripper, Wrist Roll
-  - 4x DS3218 (270° servos): Wrist Pitch, Elbow, Shoulder, Base
+  - 6x MG996R (180° servos): Gripper, Wrist Roll, Wrist Pitch, Elbow, Shoulder, Base
 - 5-6V 10A power supply
 
 ## Servo Types
@@ -29,10 +25,10 @@ ROS2_ServoTest/
 |---------|------|------|-------|--------|
 | 0 | Gripper | 180° | 0-180° | 90° |
 | 1 | Wrist Roll | 180° | 0-180° | 90° |
-| 2 | Wrist Pitch | 270° | 0-270° | 135° |
-| 3 | Elbow | 270° | 0-270° | 135° |
-| 4 | Shoulder | 270° | 0-270° | 135° |
-| 5 | Base | 270° | 0-270° | 135° |
+| 2 | Wrist Pitch | 180° | 0-180° | 90° |
+| 3 | Elbow | 180° | 0-180° | 90° |
+| 4 | Shoulder | 180° | 0-180° | 90° |
+| 5 | Base | 180° | 0-180° | 90° |
 
 ## Wiring
 
@@ -46,10 +42,10 @@ PCA9685 -> Pi 5:
 Servos -> PCA9685:
   Ch 0: Gripper (MG996R)
   Ch 1: Wrist Roll (MG996R)
-  Ch 2: Wrist Pitch (DS3218)
-  Ch 3: Elbow (DS3218)
-  Ch 4: Shoulder (DS3218)
-  Ch 5: Base (DS3218)
+  Ch 2: Wrist Pitch (MG996R)
+  Ch 3: Elbow (MG996R)
+  Ch 4: Shoulder (MG996R)
+  Ch 5: Base (MG996R)
 
 Servo Power:
   Red -> PCA9685 V+ (5-6V, 10A)
@@ -142,20 +138,6 @@ python3 teleop_keyboard.py
 - `h`: Show help
 - `q`: Quit
 
-### Calibrate 270° Servo Centers
-
-To find the actual center position for 270° servos:
-
-```bash
-# Terminal 1:
-python3 servo_control.py
-
-# Terminal 2:
-python3 find_servo_centers.py
-```
-
-Follow the prompts to find min/max for each servo. Update `kinematics_dh.py` with the calculated center values.
-
 ### ROS2 Direct Commands
 
 ```bash
@@ -164,9 +146,9 @@ source /opt/ros/jazzy/setup.bash
 # Move to center
 ros2 topic pub --once /arm_demo std_msgs/msg/String "data: 'center'"
 
-# Direct motor control (gripper 90°, rest 135° for 270° servos)
+# Direct motor control (all servos at 90°)
 ros2 topic pub --once /arm_command std_msgs/msg/Float32MultiArray \
-  "data: [90.0, 90.0, 135.0, 135.0, 135.0, 135.0]"
+  "data: [90.0, 90.0, 90.0, 90.0, 90.0, 90.0]"
 ```
 
 ## ROS2 Topics
@@ -185,19 +167,6 @@ Edit `servo_control.py`:
 ```python
 self.movement_speed = 2.0  # degrees/step (lower = smoother)
 self.step_delay = 0.02     # seconds (lower = faster)
-```
-
-### Update Kinematics Centers
-
-Edit `kinematics_dh.py` if servo centers differ from 135°:
-
-```python
-def forward_kinematics(self, angles):
-    # Replace these with actual center values from calibration
-    base_angle = base - 135.0  # Your Base center
-    shoulder_angle = shoulder - 135.0  # Your Shoulder center
-    elbow_angle = elbow - 135.0  # Your Elbow center
-    wrist_pitch_angle = wrist_pitch - 135.0  # Your Wrist Pitch center
 ```
 
 ## Troubleshooting
@@ -226,7 +195,6 @@ sudo usermod -a -G i2c $USER
 
 - Check if angle is within servo's physical limits
 - Verify power supply is providing 5-6V at 10A
-- Test with `calibrate_servo_limits.py` to find actual range
 
 ## Quick Reference
 

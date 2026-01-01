@@ -12,7 +12,7 @@ from adafruit_pca9685 import PCA9685
 from board import SCL, SDA
 import busio
 import time
-from kinematics_dh import ArmKinematicsDH
+from config import SERVO_SPECS, MOTOR_NAMES, MOVEMENT_SPEED, STEP_DELAY, INITIAL_ANGLES, PULSE_RANGES
 
 
 class RoboticArmNode(Node):
@@ -26,35 +26,18 @@ class RoboticArmNode(Node):
         self.pca.frequency = 60
         
         self.NUM_SERVOS = 6
-        self.servo_names = ["Gripper", "Wrist Roll", "Wrist Pitch", "Elbow", "Shoulder", "Base"]
-        
-        # Initialize kinematics with measured dimensions
-        self.arm_kinematics = ArmKinematicsDH(
-            base_height=10.5,
-            l2=12.9,
-            l3=11.0,
-            l4=15.0
-        )
+        self.servo_names = MOTOR_NAMES
         
         # Servo specifications
-        # Channel: (min_angle, max_angle, is_270_degree)
-        self.servo_specs = [
-            (0, 180, False),      # 0: Gripper - 180° servo
-            (0, 180, False),      # 1: Wrist Roll - 180° servo
-            (0, 270, True),       # 2: Wrist Pitch - 270° servo
-            (0, 270, True),       # 3: Elbow - 270° servo
-            (0, 270, True),       # 4: Shoulder - 270° servo
-            (0, 270, True),       # 5: Base - 270° servo
-        ]
+        self.servo_specs = SERVO_SPECS
         
         # Current state
-        self.current_angles = [90.0] * self.NUM_SERVOS
-        self.current_xyz = self.get_xyz_position(self.current_angles)
+        self.current_angles = INITIAL_ANGLES.copy()
         self.initialized = False
         
         # Movement parameters
-        self.movement_speed = 2.0  # degrees per step
-        self.step_delay = 0.02     # seconds between steps
+        self.movement_speed = MOVEMENT_SPEED
+        self.step_delay = STEP_DELAY
         
         self.get_logger().info('=' * 60)
         self.get_logger().info('ROBOTIC ARM INITIALIZATION')
@@ -85,8 +68,7 @@ class RoboticArmNode(Node):
             self.get_logger().info(f'  Initializing {self.servo_names[channel]}...')
             
             # Determine center position based on servo type
-            min_angle, max_angle, is_270 = self.servo_specs[channel]
-            center_angle = 135.0 if is_270 else 90.0
+            center_angle = 0.0  # All at 0° for homing
             
             # Move in small steps to center
             steps = 60
@@ -97,9 +79,6 @@ class RoboticArmNode(Node):
             self.current_angles[channel] = center_angle
             self.get_logger().info(f'    ✓ {self.servo_names[channel]} centered at {center_angle}°')
         
-        # Calculate initial position
-        self.current_xyz = self.get_xyz_position(self.current_angles)
-        
         # Ready!
         self.initialized = True
         
@@ -108,26 +87,13 @@ class RoboticArmNode(Node):
         self.get_logger().info('=' * 60)
         self.get_logger().info('Topics: /arm_command, /arm_demo')
         self.get_logger().info(f'Movement: {self.movement_speed}°/step @ {self.step_delay*1000:.0f}ms')
-        self.get_logger().info(f'Position: X={self.current_xyz["x"]:.2f}, Y={self.current_xyz["y"]:.2f}, Z={self.current_xyz["z"]:.2f} cm')
         self.get_logger().info('=' * 60)
     
     def get_pulse_range(self, channel):
-        """Get PWM pulse range for servo channel based on servo type.
-        
-        PCA9685 duty_cycle expects 16-bit values (0-65535)
-        At 50Hz: 20ms period = 65535 max counts
-        1µs = 65535 / 20000 = 3.28 counts
-        """
+        """Get PWM pulse range for servo channel based on servo type."""
         min_angle, max_angle, is_270 = self.servo_specs[channel]
         
-        if is_270:
-            # 270° servo: 500µs to 2500µs pulse width
-            # 500µs * 3.28 = 1640, 2500µs * 3.28 = 8200
-            return 1640, 8200
-        else:
-            # 180° servo: 1000µs to 2000µs pulse width
-            # 1000µs * 3.28 = 3280, 2000µs * 3.28 = 6560
-            return 3280, 6560
+        return PULSE_RANGES[1 if is_270 else 0]
     
     def set_servo_angle(self, channel, angle):
         """Set servo angle with per-servo limits and type."""
@@ -148,11 +114,6 @@ class RoboticArmNode(Node):
             self.get_logger().debug(f'Ch{channel}: angle={angle:.1f}°, pulse={pulse} ({pulse/65535*100:.1f}%)')
         
         self.pca.channels[channel].duty_cycle = pulse
-    
-    def get_xyz_position(self, angles):
-        """Calculate XYZ position from joint angles using forward kinematics."""
-        pos = self.arm_kinematics.forward_kinematics(angles)
-        return pos
     
     def smooth_move_to_angles(self, target_angles):
         """Smoothly interpolate from current to target angles."""
@@ -175,7 +136,6 @@ class RoboticArmNode(Node):
                 time.sleep(self.step_delay)
         
         self.current_angles = list(target_angles)
-        self.current_xyz = self.get_xyz_position(self.current_angles)
     
     def arm_callback(self, msg):
         """Direct motor angle control."""
@@ -192,8 +152,7 @@ class RoboticArmNode(Node):
         # Log servo angles AND XYZ position
         self.get_logger().info(
             f'Angles: [{msg.data[0]:.1f}° {msg.data[1]:.1f}° {msg.data[2]:.1f}° '
-            f'{msg.data[3]:.1f}° {msg.data[4]:.1f}° {msg.data[5]:.1f}°] | '
-            f'XYZ: ({self.current_xyz["x"]:.2f}, {self.current_xyz["y"]:.2f}, {self.current_xyz["z"]:.2f}) cm'
+            f'{msg.data[3]:.1f}° {msg.data[4]:.1f}° {msg.data[5]:.1f}°]'
         )
     
     def demo_callback(self, msg):
@@ -203,7 +162,8 @@ class RoboticArmNode(Node):
         
         if msg.data == 'center':
             self.get_logger().info('Centering all motors...')
-            self.smooth_move_to_angles([90.0, 90.0, 135.0, 135.0, 135.0, 135.0])
+            center_angles = INITIAL_ANGLES.copy()
+            self.smooth_move_to_angles(center_angles)
             self.get_logger().info('✓ Centered')
     
     def disable_all_servos(self):

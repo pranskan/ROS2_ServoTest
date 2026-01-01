@@ -1,7 +1,7 @@
-# Ignore Python cache directories
+# Python cache directories
 __pycache__/
 *.pyc
 *.pyo
 
-# Ignore log files
+# Log files
 *.log
