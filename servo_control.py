@@ -68,7 +68,7 @@ class RoboticArmNode(Node):
             self.get_logger().info(f'  Initializing {self.servo_names[channel]}...')
             
             # Determine center position based on servo type
-            center_angle = 0.0  # All at 0° for homing
+            center_angle = INITIAL_ANGLES[channel]  # Use individual initial angle
             
             # Move in small steps to center
             steps = 60

@@ -36,7 +36,7 @@ INITIAL_ANGLES = [
     0.0,  # 2: Wrist Pitch
     0.0,  # 3: Elbow
     0.0,  # 4: Shoulder
-    0.0,  # 5: Base
+    90.0,  # 5: Base
 ]
 
 # Motor names

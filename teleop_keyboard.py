@@ -99,12 +99,12 @@ class TeleopNode(Node):
         print(f"{MOTOR_NAMES[motor]}: {self.angles[motor]:.1f}° | PWM: {pulse} ({pulse/65535*100:.1f}%)")
     
     def center_all(self):
-        """Move all motors to center position (0° for homing)."""
+        """Move all motors to center position (initial angles for homing)."""
         self.angles = INITIAL_ANGLES.copy()
         self.publish_state()
         
         self.get_logger().info('Centered all motors')
-        print("All motors centered at 0°")
+        print("All motors centered to initial positions")
     
     def show_status(self):
         """Print current status."""
